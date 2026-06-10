@@ -1,0 +1,90 @@
+# yii3-ab-testing-db
+
+## Install
+
+```bash
+composer require rasuvaeff/yii3-ab-testing-db
+```
+
+## Rules
+
+- Implements `Rasuvaeff\Yii3AbTesting\ExperimentProvider` — returns `array<string, Experiment>`.
+- Reads the entire experiment set in one query via yiisoft/db `Query` builder (`SELECT *`).
+- `variants` column is a JSON object `{"variant":weight}`; weights are non-negative integers; `fallback_variant` must be one of the keys.
+- Empty `salt` falls back to the experiment `name`.
+- Invalid row shape / malformed JSON / invalid experiment (bad name, unknown fallback, zero total weight) throws `InvalidExperimentRowException` (never silently skips; core errors wrapped).
+- `CachedExperimentProvider` is a PSR-16 decorator; cache write failure is non-fatal. Cache key `rasuvaeff.ab-testing.experiments` (dot-separated; PSR-16 reserves `:`).
+- Assignment hashing, fallback, forced/disabled logic — all remain in core.
+- Ships a `yiisoft/db-migration` migration in `migrations/`; table name is a migration constructor arg (default `ab_experiments`).
+- Binds `ExperimentProvider` in `config/di.php` (one source only — not the `AbTesting` facade).
+
+## Database schema
+
+Create the table via the shipped migration (register `migrations/` in
+`yiisoft/db-migration` `sourcePaths`, run `./yii migrate:up`), or manually:
+
+```sql
+CREATE TABLE ab_experiments (
+    name             VARCHAR(190) PRIMARY KEY,
+    enabled          BOOLEAN      NOT NULL DEFAULT TRUE,
+    salt             VARCHAR(190) NOT NULL DEFAULT '',
+    fallback_variant VARCHAR(190) NOT NULL DEFAULT '',
+    variants         TEXT         NOT NULL DEFAULT '{}'
+);
+```
+
+## API
+
+### DbExperimentProvider
+
+```php
+use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
+
+$provider = new DbExperimentProvider(
+    db: $connection,             // Yiisoft\Db\Connection\ConnectionInterface
+    table: 'ab_experiments',     // optional, default 'ab_experiments'
+);
+
+$experiments = $provider->getExperiments(); // array<string, Experiment>
+```
+
+### CachedExperimentProvider
+
+```php
+use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
+
+$cached = new CachedExperimentProvider(
+    inner: $dbProvider,          // ExperimentProvider
+    cache: $psr16,               // Psr\SimpleCache\CacheInterface
+    ttl: 60,                     // int<0, max> seconds
+);
+
+$experiments = $cached->getExperiments(); // from cache or inner
+$cached->clear();                // invalidate cache
+```
+
+### InvalidExperimentRowException
+
+```php
+use Rasuvaeff\Yii3AbTestingDb\Exception\InvalidExperimentRowException;
+```
+
+Thrown when a DB row is missing required columns, has wrong types, contains
+malformed `variants` JSON, or yields an invalid experiment (bad name, unknown
+fallback variant, zero total weight, negative weight). Core validation errors are
+wrapped into this exception.
+
+### Usage with AbTesting
+
+```php
+use Rasuvaeff\Yii3AbTesting\AbTesting;
+use Rasuvaeff\Yii3AbTesting\WeightedHashAssignmentStrategy;
+use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
+
+$ab = new AbTesting(
+    provider: new DbExperimentProvider(db: $connection),
+    strategy: new WeightedHashAssignmentStrategy(),
+);
+
+$ab->assign(experiment: 'checkout-button', subjectId: $userId);
+```
