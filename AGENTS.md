@@ -67,7 +67,8 @@ bootstrap `pcov` inside the `composer:2` container.
 - Migrations are loaded by `yiisoft/db-migration` via `sourcePaths`
   (global-namespace class in `migrations/`); the table name is a constructor arg.
 - `CachedExperimentProvider` caches the whole set; invalidation by TTL or
-  `clear()`. Cache read/write failures are non-fatal. Cache key
+  `clear()`. Any cache failure is non-fatal (`\Throwable` is caught: down backend,
+  corrupted payload) — reads fall back to the inner provider. Cache key
   `rasuvaeff.ab-testing.experiments` is dot-separated (PSR-16 reserves `{}()/\@:`,
   so avoid `:` in keys — `yiisoft/test-support`'s `MemorySimpleCache` rejects it).
 - Empty table → `[]`.

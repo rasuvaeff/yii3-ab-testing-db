@@ -13,7 +13,7 @@ composer require rasuvaeff/yii3-ab-testing-db
 - `variants` column is a JSON object `{"variant":weight}`; weights are non-negative integers; `fallback_variant` must be one of the keys.
 - Empty `salt` falls back to the experiment `name`.
 - Invalid row shape / malformed JSON / invalid experiment (bad name, unknown fallback, zero total weight) throws `InvalidExperimentRowException` (never silently skips; core errors wrapped).
-- `CachedExperimentProvider` is a PSR-16 decorator; cache write failure is non-fatal. Cache key `rasuvaeff.ab-testing.experiments` (dot-separated; PSR-16 reserves `:`).
+- `CachedExperimentProvider` is a PSR-16 decorator; any cache failure (down backend, corrupted payload) is non-fatal — it falls back to the inner provider. Cache key `rasuvaeff.ab-testing.experiments` (dot-separated; PSR-16 reserves `:`).
 - Assignment hashing, fallback, forced/disabled logic — all remain in core.
 - Ships a `yiisoft/db-migration` migration in `migrations/`; table name is a migration constructor arg (default `ab_experiments`).
 - Binds `ExperimentProvider` in `config/di.php` (one source only — not the `AbTesting` facade).

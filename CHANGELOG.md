@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 1.0.0 — unreleased
 
 - `DbExperimentProvider` — reads all experiments from a DB table in one query and implements `Rasuvaeff\Yii3AbTesting\ExperimentProvider`.
-- `CachedExperimentProvider` — PSR-16 decorator caching the whole experiment set with a TTL; `clear()` invalidates.
+- `CachedExperimentProvider` — PSR-16 decorator caching the whole experiment set with a TTL; `clear()` invalidates. Any cache failure (including a down backend or a corrupted payload) falls back to the inner provider instead of breaking the request.
 - `ExperimentRowMapper` (`@internal`) — maps a DB row to a validated `Experiment`; wraps core validation errors into `InvalidExperimentRowException`.
 - `Exception\InvalidExperimentRowException` — thrown on missing/invalid columns, malformed `variants` JSON, or invalid experiment definitions.
 - `migrations/M260610000000CreateAbExperimentsTable` — creates the `ab_experiments` table (JSON `variants` column).

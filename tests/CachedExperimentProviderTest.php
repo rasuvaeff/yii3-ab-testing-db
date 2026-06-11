@@ -137,6 +137,49 @@ final class CachedExperimentProviderTest extends TestCase
     }
 
     #[Test]
+    public function fallsBackToInnerWhenCacheBackendIsDown(): void
+    {
+        $experiment = $this->experiment('rt-exp');
+        $inner = $this->createStub(ExperimentProvider::class);
+        $inner->method('getExperiments')->willReturn(['rt-exp' => $experiment]);
+
+        $provider = new CachedExperimentProvider(inner: $inner, cache: new BrokenCache(), ttl: 60);
+        $result = $provider->getExperiments();
+
+        $this->assertArrayHasKey('rt-exp', $result);
+        $this->assertSame('rt-exp', $result['rt-exp']->name);
+    }
+
+    #[Test]
+    public function clearIsNonFatalWhenCacheBackendIsDown(): void
+    {
+        $inner = $this->createStub(ExperimentProvider::class);
+        $inner->method('getExperiments')->willReturn([]);
+
+        $provider = new CachedExperimentProvider(inner: $inner, cache: new BrokenCache(), ttl: 60);
+
+        $this->expectNotToPerformAssertions();
+
+        $provider->clear();
+    }
+
+    #[Test]
+    public function ignoresCorruptedNonArrayCacheValue(): void
+    {
+        $cache = new MemorySimpleCache();
+        $cache->set(self::CACHE_KEY, 'corrupted');
+
+        $experiment = $this->experiment('rt-exp');
+        $inner = $this->createStub(ExperimentProvider::class);
+        $inner->method('getExperiments')->willReturn(['rt-exp' => $experiment]);
+
+        $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 60);
+        $result = $provider->getExperiments();
+
+        $this->assertArrayHasKey('rt-exp', $result);
+    }
+
+    #[Test]
     public function clearIsNonFatalWhenCacheThrows(): void
     {
         $inner = $this->createStub(ExperimentProvider::class);

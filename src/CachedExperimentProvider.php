@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3AbTestingDb;
 
 use Psr\SimpleCache\CacheInterface;
-use Psr\SimpleCache\InvalidArgumentException as CacheInvalidArgumentException;
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 
@@ -31,14 +30,18 @@ final readonly class CachedExperimentProvider implements ExperimentProvider
     #[\Override]
     public function getExperiments(): array
     {
+        // Any cache failure (down Redis, broken connection, incompatible
+        // serialized payload) must fall back to the inner provider, not break
+        // the request — hence \Throwable, not just the PSR-16 exception.
         try {
-            /** @var array<string, Experiment>|null $cached */
+            /** @var mixed $cached */
             $cached = $this->cache->get(key: self::CACHE_KEY);
-        } catch (CacheInvalidArgumentException) {
+        } catch (\Throwable) {
             $cached = null;
         }
 
-        if ($cached !== null) {
+        if (\is_array($cached)) {
+            /** @var array<string, Experiment> $cached */
             return $cached;
         }
 
@@ -46,7 +49,7 @@ final readonly class CachedExperimentProvider implements ExperimentProvider
 
         try {
             $this->cache->set(key: self::CACHE_KEY, value: $experiments, ttl: $this->ttl);
-        } catch (CacheInvalidArgumentException) {
+        } catch (\Throwable) {
             // Cache write failure is non-fatal; experiments are still returned.
         }
 
@@ -57,7 +60,7 @@ final readonly class CachedExperimentProvider implements ExperimentProvider
     {
         try {
             $this->cache->delete(key: self::CACHE_KEY);
-        } catch (CacheInvalidArgumentException) {
+        } catch (\Throwable) {
             // Cache clear failure is non-fatal.
         }
     }
