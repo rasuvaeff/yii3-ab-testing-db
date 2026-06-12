@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.0.0 — unreleased
+## 1.0.0 — 2026-06-12
 
 - `DbExperimentProvider` — reads all experiments from a DB table in one query and implements `Rasuvaeff\Yii3AbTesting\ExperimentProvider`.
 - `CachedExperimentProvider` — PSR-16 decorator caching the whole experiment set with a TTL; `clear()` invalidates. Any cache failure (including a down backend or a corrupted payload) falls back to the inner provider instead of breaking the request.
