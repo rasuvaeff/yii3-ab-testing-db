@@ -185,8 +185,14 @@ final class ExperimentRowMapper
         $type = isset($data['type']) && \is_string($data['type']) ? $data['type'] : null;
 
         if ($type === 'environment') {
+            if (!isset($data['values']) || !\is_array($data['values'])) {
+                throw new Exception\InvalidExperimentRowException(
+                    message: 'Invalid "environment" targeting rule: "values" must be an array',
+                );
+            }
+
             /** @var list<string> $values */
-            $values = (array) ($data['values'] ?? []);
+            $values = $data['values'];
 
             return new EnvironmentTargetingRule(environments: $values);
         }
@@ -200,24 +206,42 @@ final class ExperimentRowMapper
                 );
             }
 
+            if (!isset($data['attribute']) || !\is_string($data['attribute'])) {
+                throw new Exception\InvalidExperimentRowException(
+                    message: 'Invalid "attribute" targeting rule: "attribute" must be a string',
+                );
+            }
+
             return new AttributeTargetingRule(
-                attribute: (string) ($data['attribute'] ?? ''),
+                attribute: $data['attribute'],
                 value: $value,
             );
         }
 
         if ($type === 'and') {
-            /** @var list<array<string, mixed>> $ruleData */
-            $ruleData = (array) ($data['rules'] ?? []);
+            if (!isset($data['rules']) || !\is_array($data['rules'])) {
+                throw new Exception\InvalidExperimentRowException(
+                    message: 'Invalid "and" targeting rule: "rules" must be an array',
+                );
+            }
 
-            return new AndTargetingRule(rules: array_map($this->buildRule(...), $ruleData));
+            /** @var list<array<string, mixed>> $rules */
+            $rules = $data['rules'];
+
+            return new AndTargetingRule(rules: array_map($this->buildRule(...), $rules));
         }
 
         if ($type === 'or') {
-            /** @var list<array<string, mixed>> $ruleData */
-            $ruleData = (array) ($data['rules'] ?? []);
+            if (!isset($data['rules']) || !\is_array($data['rules'])) {
+                throw new Exception\InvalidExperimentRowException(
+                    message: 'Invalid "or" targeting rule: "rules" must be an array',
+                );
+            }
 
-            return new OrTargetingRule(rules: array_map($this->buildRule(...), $ruleData));
+            /** @var list<array<string, mixed>> $rules */
+            $rules = $data['rules'];
+
+            return new OrTargetingRule(rules: array_map($this->buildRule(...), $rules));
         }
 
         throw new Exception\InvalidExperimentRowException(
