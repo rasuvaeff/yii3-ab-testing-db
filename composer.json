@@ -26,7 +26,7 @@
         "php": "8.3 - 8.5",
         "ext-json": "*",
         "psr/simple-cache": "^3.0",
-        "rasuvaeff/yii3-ab-testing": "^1.0",
+        "rasuvaeff/yii3-ab-testing": "^1.4",
         "yiisoft/db": "^2.0",
         "yiisoft/db-migration": "^2.0"
     },

@@ -7,6 +7,9 @@ namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Rasuvaeff\Yii3AbTesting\AndTargetingRule;
+use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
+use Rasuvaeff\Yii3AbTesting\EnvironmentTargetingRule;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\Exception\InvalidExperimentRowException;
 use Yiisoft\Db\Cache\SchemaCache;
@@ -34,7 +37,8 @@ final class SqliteIntegrationTest extends TestCase
                 enabled          INTEGER      NOT NULL DEFAULT 1,
                 salt             VARCHAR(190) NOT NULL DEFAULT \'\',
                 fallback_variant VARCHAR(190) NOT NULL DEFAULT \'\',
-                variants         TEXT         NOT NULL DEFAULT \'{}\'
+                variants         TEXT         NOT NULL DEFAULT \'{}\',
+                targeting        TEXT         NULL
             )
         ')->execute();
     }
@@ -114,6 +118,84 @@ final class SqliteIntegrationTest extends TestCase
     }
 
     #[Test]
+    public function readsExperimentWithEnvironmentTargeting(): void
+    {
+        $this->insertRow(
+            name: 'targeted-exp',
+            enabled: true,
+            salt: 's',
+            fallbackVariant: 'control',
+            variants: '{"control":50,"green":50}',
+            targeting: '{"type":"environment","values":["production"]}',
+        );
+
+        $provider = new DbExperimentProvider(db: $this->db);
+        $experiment = $provider->getExperiments()['targeted-exp'];
+
+        $this->assertInstanceOf(EnvironmentTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function readsExperimentWithAttributeTargeting(): void
+    {
+        $this->insertRow(
+            name: 'attr-exp',
+            enabled: true,
+            salt: 's',
+            fallbackVariant: 'control',
+            variants: '{"control":100}',
+            targeting: '{"type":"attribute","attribute":"plan","value":"pro"}',
+        );
+
+        $provider = new DbExperimentProvider(db: $this->db);
+        $experiment = $provider->getExperiments()['attr-exp'];
+
+        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function readsExperimentWithCompositeTargeting(): void
+    {
+        $json = json_encode([
+            'type' => 'and',
+            'rules' => [
+                ['type' => 'environment', 'values' => ['production']],
+                ['type' => 'attribute', 'attribute' => 'plan', 'value' => 'pro'],
+            ],
+        ]);
+        $this->insertRow(
+            name: 'composite-exp',
+            enabled: true,
+            salt: 's',
+            fallbackVariant: 'control',
+            variants: '{"control":100}',
+            targeting: (string) $json,
+        );
+
+        $provider = new DbExperimentProvider(db: $this->db);
+        $experiment = $provider->getExperiments()['composite-exp'];
+
+        $this->assertInstanceOf(AndTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function readsExperimentWithNullTargeting(): void
+    {
+        $this->insertRow(
+            name: 'no-targeting',
+            enabled: true,
+            salt: 's',
+            fallbackVariant: 'control',
+            variants: '{"control":100}',
+        );
+
+        $provider = new DbExperimentProvider(db: $this->db);
+        $experiment = $provider->getExperiments()['no-targeting'];
+
+        $this->assertNull($experiment->targeting);
+    }
+
+    #[Test]
     public function usesCustomTableName(): void
     {
         $this->db->createCommand(sql: '
@@ -122,7 +204,8 @@ final class SqliteIntegrationTest extends TestCase
                 enabled          INTEGER      NOT NULL DEFAULT 1,
                 salt             VARCHAR(190) NOT NULL DEFAULT \'\',
                 fallback_variant VARCHAR(190) NOT NULL DEFAULT \'\',
-                variants         TEXT         NOT NULL DEFAULT \'{}\'
+                variants         TEXT         NOT NULL DEFAULT \'{}\',
+                targeting        TEXT         NULL
             )
         ')->execute();
 
@@ -170,16 +253,18 @@ final class SqliteIntegrationTest extends TestCase
         string $salt,
         string $fallbackVariant,
         string $variants,
+        ?string $targeting = null,
     ): void {
         $this->db->createCommand(sql: '
-            INSERT INTO ab_experiments (name, enabled, salt, fallback_variant, variants)
-            VALUES (:name, :enabled, :salt, :fallback_variant, :variants)
+            INSERT INTO ab_experiments (name, enabled, salt, fallback_variant, variants, targeting)
+            VALUES (:name, :enabled, :salt, :fallback_variant, :variants, :targeting)
         ')->bindValues([
             ':name' => $name,
             ':enabled' => $enabled ? 1 : 0,
             ':salt' => $salt,
             ':fallback_variant' => $fallbackVariant,
             ':variants' => $variants,
+            ':targeting' => $targeting,
         ])->execute();
     }
 }

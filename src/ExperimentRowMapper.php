@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb;
 
+use Rasuvaeff\Yii3AbTesting\AndTargetingRule;
+use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
+use Rasuvaeff\Yii3AbTesting\EnvironmentTargetingRule;
 use Rasuvaeff\Yii3AbTesting\Exception\InvalidExperimentException;
 use Rasuvaeff\Yii3AbTesting\Exception\InvalidVariantException;
 use Rasuvaeff\Yii3AbTesting\Experiment;
+use Rasuvaeff\Yii3AbTesting\OrTargetingRule;
+use Rasuvaeff\Yii3AbTesting\TargetingRule;
 
 /**
  * Maps a raw database row into a validated {@see Experiment}.
@@ -30,6 +35,7 @@ final class ExperimentRowMapper
                 salt: $salt === '' ? $name : $salt,
                 fallbackVariant: $this->extractString(row: $row, column: 'fallback_variant'),
                 variants: $this->extractVariants(row: $row),
+                targeting: $this->extractTargeting(row: $row),
             );
         } catch (InvalidExperimentException|InvalidVariantException $e) {
             throw new Exception\InvalidExperimentRowException(
@@ -140,5 +146,82 @@ final class ExperimentRowMapper
         }
 
         return $result;
+    }
+
+    /**
+     * @param array<array-key, mixed> $row
+     */
+    private function extractTargeting(array $row): ?TargetingRule
+    {
+        if (!array_key_exists('targeting', $row)
+            || $row['targeting'] === null
+            || $row['targeting'] === '') {
+            return null;
+        }
+
+        if (!\is_string($row['targeting'])) {
+            throw new Exception\InvalidExperimentRowException(
+                message: 'Invalid "targeting" column: expected JSON string or null',
+            );
+        }
+
+        try {
+            /** @var array<string, mixed> $data */
+            $data = json_decode(json: $row['targeting'], associative: true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw new Exception\InvalidExperimentRowException(
+                message: sprintf('Invalid "targeting" JSON: %s', $row['targeting']),
+            );
+        }
+
+        return $this->buildRule(data: $data);
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function buildRule(array $data): TargetingRule
+    {
+        $type = isset($data['type']) && \is_string($data['type']) ? $data['type'] : null;
+
+        if ($type === 'environment') {
+            /** @var list<string> $values */
+            $values = (array) ($data['values'] ?? []);
+
+            return new EnvironmentTargetingRule(environments: $values);
+        }
+
+        if ($type === 'attribute') {
+            $value = $data['value'] ?? null;
+
+            if (!\is_string($value) && !\is_int($value) && !\is_float($value) && !\is_bool($value)) {
+                throw new Exception\InvalidExperimentRowException(
+                    message: 'Invalid targeting attribute value type',
+                );
+            }
+
+            return new AttributeTargetingRule(
+                attribute: (string) ($data['attribute'] ?? ''),
+                value: $value,
+            );
+        }
+
+        if ($type === 'and') {
+            /** @var list<array<string, mixed>> $ruleData */
+            $ruleData = (array) ($data['rules'] ?? []);
+
+            return new AndTargetingRule(rules: array_map($this->buildRule(...), $ruleData));
+        }
+
+        if ($type === 'or') {
+            /** @var list<array<string, mixed>> $ruleData */
+            $ruleData = (array) ($data['rules'] ?? []);
+
+            return new OrTargetingRule(rules: array_map($this->buildRule(...), $ruleData));
+        }
+
+        throw new Exception\InvalidExperimentRowException(
+            message: sprintf('Unknown targeting rule type: "%s"', $type ?? '(null)'),
+        );
     }
 }

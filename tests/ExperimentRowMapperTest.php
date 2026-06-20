@@ -8,6 +8,10 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Rasuvaeff\Yii3AbTesting\AndTargetingRule;
+use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
+use Rasuvaeff\Yii3AbTesting\EnvironmentTargetingRule;
+use Rasuvaeff\Yii3AbTesting\OrTargetingRule;
 use Rasuvaeff\Yii3AbTestingDb\Exception\InvalidExperimentRowException;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentRowMapper;
 
@@ -198,6 +202,107 @@ final class ExperimentRowMapperTest extends TestCase
         $this->expectExceptionMessage('Invalid experiment "exp" in DB row');
 
         $this->mapper->map($this->row(fallbackVariant: 'control', variants: ['control' => 0]));
+    }
+
+    #[Test]
+    public function targetingNullWhenColumnAbsent(): void
+    {
+        $experiment = $this->mapper->map($this->row());
+
+        $this->assertNull($experiment->targeting);
+    }
+
+    #[Test]
+    public function targetingNullWhenColumnIsNull(): void
+    {
+        $experiment = $this->mapper->map($this->row() + ['targeting' => null]);
+
+        $this->assertNull($experiment->targeting);
+    }
+
+    #[Test]
+    public function targetingNullWhenColumnIsEmptyString(): void
+    {
+        $experiment = $this->mapper->map($this->row() + ['targeting' => '']);
+
+        $this->assertNull($experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesEnvironmentTargetingRule(): void
+    {
+        $experiment = $this->mapper->map(
+            $this->row() + ['targeting' => '{"type":"environment","values":["production","staging"]}'],
+        );
+
+        $this->assertInstanceOf(EnvironmentTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesAttributeTargetingRule(): void
+    {
+        $experiment = $this->mapper->map(
+            $this->row() + ['targeting' => '{"type":"attribute","attribute":"plan","value":"pro"}'],
+        );
+
+        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesAndTargetingRuleWithNestedRules(): void
+    {
+        $json = json_encode([
+            'type' => 'and',
+            'rules' => [
+                ['type' => 'environment', 'values' => ['production']],
+                ['type' => 'attribute', 'attribute' => 'plan', 'value' => 'pro'],
+            ],
+        ]);
+        $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
+
+        $this->assertInstanceOf(AndTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesOrTargetingRule(): void
+    {
+        $json = json_encode([
+            'type' => 'or',
+            'rules' => [
+                ['type' => 'environment', 'values' => ['production']],
+                ['type' => 'attribute', 'attribute' => 'beta', 'value' => true],
+            ],
+        ]);
+        $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
+
+        $this->assertInstanceOf(OrTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function throwsOnInvalidTargetingJson(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/Invalid "targeting" JSON/');
+
+        $this->mapper->map($this->row() + ['targeting' => 'not-json']);
+    }
+
+    #[Test]
+    public function throwsOnUnknownTargetingType(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/Unknown targeting rule type/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"unknown"}']);
+    }
+
+    #[Test]
+    public function throwsOnInvalidTargetingColumnType(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/expected JSON string or null/');
+
+        $this->mapper->map($this->row() + ['targeting' => 42]);
     }
 
     /**
