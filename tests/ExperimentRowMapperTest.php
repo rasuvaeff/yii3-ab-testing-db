@@ -8,6 +8,11 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Rasuvaeff\Yii3AbTesting\AndTargetingRule;
+use Rasuvaeff\Yii3AbTesting\AssignmentContext;
+use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
+use Rasuvaeff\Yii3AbTesting\EnvironmentTargetingRule;
+use Rasuvaeff\Yii3AbTesting\OrTargetingRule;
 use Rasuvaeff\Yii3AbTestingDb\Exception\InvalidExperimentRowException;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentRowMapper;
 
@@ -198,6 +203,234 @@ final class ExperimentRowMapperTest extends TestCase
         $this->expectExceptionMessage('Invalid experiment "exp" in DB row');
 
         $this->mapper->map($this->row(fallbackVariant: 'control', variants: ['control' => 0]));
+    }
+
+    #[Test]
+    public function targetingNullWhenColumnAbsent(): void
+    {
+        $experiment = $this->mapper->map($this->row());
+
+        $this->assertNull($experiment->targeting);
+    }
+
+    #[Test]
+    public function targetingNullWhenColumnIsNull(): void
+    {
+        $experiment = $this->mapper->map($this->row() + ['targeting' => null]);
+
+        $this->assertNull($experiment->targeting);
+    }
+
+    #[Test]
+    public function targetingNullWhenColumnIsEmptyString(): void
+    {
+        $experiment = $this->mapper->map($this->row() + ['targeting' => '']);
+
+        $this->assertNull($experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesEnvironmentTargetingRule(): void
+    {
+        $experiment = $this->mapper->map(
+            $this->row() + ['targeting' => '{"type":"environment","values":["production","staging"]}'],
+        );
+
+        $this->assertInstanceOf(EnvironmentTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesAttributeTargetingRule(): void
+    {
+        $experiment = $this->mapper->map(
+            $this->row() + ['targeting' => '{"type":"attribute","attribute":"plan","value":"pro"}'],
+        );
+
+        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesAndTargetingRuleWithNestedRules(): void
+    {
+        $json = json_encode([
+            'type' => 'and',
+            'rules' => [
+                ['type' => 'environment', 'values' => ['production']],
+                ['type' => 'attribute', 'attribute' => 'plan', 'value' => 'pro'],
+            ],
+        ]);
+        $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
+
+        $this->assertInstanceOf(AndTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesOrTargetingRule(): void
+    {
+        $json = json_encode([
+            'type' => 'or',
+            'rules' => [
+                ['type' => 'environment', 'values' => ['production']],
+                ['type' => 'attribute', 'attribute' => 'beta', 'value' => true],
+            ],
+        ]);
+        $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
+
+        $this->assertInstanceOf(OrTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function throwsOnInvalidTargetingJson(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/Invalid "targeting" JSON/');
+
+        $this->mapper->map($this->row() + ['targeting' => 'not-json']);
+    }
+
+    #[Test]
+    public function throwsOnUnknownTargetingType(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/Unknown targeting rule type/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"unknown"}']);
+    }
+
+    #[Test]
+    public function throwsOnInvalidTargetingColumnType(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/expected JSON string or null/');
+
+        $this->mapper->map($this->row() + ['targeting' => 42]);
+    }
+
+    #[Test]
+    public function throwsOnNonStringTypeInTargeting(): void
+    {
+        // type=42 → isset=true, is_string=false → $type=null → error message contains (null)
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/"\\(null\\)"/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":42}']);
+    }
+
+    #[Test]
+    public function throwsOnUnknownTargetingTypeIncludesTypeName(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/"unknown"/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"unknown"}']);
+    }
+
+    #[Test]
+    public function throwsOnEnvironmentRuleWithNonArrayValues(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/"values" must be an array/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"environment","values":"production"}']);
+    }
+
+    #[Test]
+    public function decodesAttributeTargetingRuleWithIntValue(): void
+    {
+        $experiment = $this->mapper->map(
+            $this->row() + ['targeting' => '{"type":"attribute","attribute":"count","value":42}'],
+        );
+
+        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function decodesAttributeTargetingRuleWithFloatValue(): void
+    {
+        $experiment = $this->mapper->map(
+            $this->row() + ['targeting' => '{"type":"attribute","attribute":"score","value":3.14}'],
+        );
+
+        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+    }
+
+    #[Test]
+    public function throwsOnAttributeRuleWithInvalidValueType(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/Invalid targeting attribute value type/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"attribute","attribute":"x","value":{"nested":"obj"}}']);
+    }
+
+    #[Test]
+    public function throwsOnAttributeRuleWithNonStringAttribute(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/"attribute" must be a string/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"attribute","attribute":99,"value":"x"}']);
+    }
+
+    #[Test]
+    public function throwsOnAndRuleWithNonArrayRules(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/"rules" must be an array/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"and","rules":"invalid"}']);
+    }
+
+    #[Test]
+    public function throwsOnOrRuleWithNonArrayRules(): void
+    {
+        $this->expectException(InvalidExperimentRowException::class);
+        $this->expectExceptionMessageMatches('/"rules" must be an array/');
+
+        $this->mapper->map($this->row() + ['targeting' => '{"type":"or","rules":"invalid"}']);
+    }
+
+    #[Test]
+    public function builtCompositeRuleMatchesContext(): void
+    {
+        $json = json_encode([
+            'type' => 'and',
+            'rules' => [
+                ['type' => 'environment', 'values' => ['production']],
+                ['type' => 'attribute', 'attribute' => 'plan', 'value' => 'pro'],
+            ],
+        ]);
+        $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
+
+        $matching = AssignmentContext::forEnvironment('production')
+            ->withAttribute(name: 'plan', value: 'pro');
+        $mismatch = AssignmentContext::forEnvironment('staging');
+
+        $this->assertNotNull($experiment->targeting);
+        $this->assertTrue($experiment->targeting->matches($matching));
+        $this->assertFalse($experiment->targeting->matches($mismatch));
+    }
+
+    #[Test]
+    public function builtOrRuleMatchesContext(): void
+    {
+        $json = json_encode([
+            'type' => 'or',
+            'rules' => [
+                ['type' => 'environment', 'values' => ['production']],
+                ['type' => 'attribute', 'attribute' => 'beta', 'value' => true],
+            ],
+        ]);
+        $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
+
+        $matchEnv = AssignmentContext::forEnvironment('production');
+        $matchAttr = AssignmentContext::empty()->withAttribute(name: 'beta', value: true);
+        $noMatch = AssignmentContext::forEnvironment('staging');
+
+        $this->assertNotNull($experiment->targeting);
+        $this->assertTrue($experiment->targeting->matches($matchEnv));
+        $this->assertTrue($experiment->targeting->matches($matchAttr));
+        $this->assertFalse($experiment->targeting->matches($noMatch));
     }
 
     /**
