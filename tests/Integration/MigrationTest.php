@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
 
 use M260610000000CreateAbExperimentsTable;
-use PHPUnit\Framework\Attributes\CoversNothing;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
+use Testo\Assert;
+use Testo\Codecov\CoversNothing;
+use Testo\Lifecycle\AfterTest;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 use Yiisoft\Db\Cache\SchemaCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Migration\Informer\NullMigrationInformer;
@@ -17,15 +19,16 @@ use Yiisoft\Db\Sqlite\Connection as SqliteConnection;
 use Yiisoft\Db\Sqlite\Driver as SqliteDriver;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 
+#[Test]
 #[CoversNothing]
-final class MigrationTest extends TestCase
+final class MigrationTest
 {
     private ConnectionInterface $db;
 
     private MigrationBuilder $builder;
 
-    #[\Override]
-    protected function setUp(): void
+    #[BeforeTest]
+    public function setUp(): void
     {
         require_once dirname(__DIR__, 2) . '/migrations/M260610000000CreateAbExperimentsTable.php';
 
@@ -37,13 +40,12 @@ final class MigrationTest extends TestCase
         $this->builder = new MigrationBuilder(db: $this->db, informer: new NullMigrationInformer());
     }
 
-    #[\Override]
-    protected function tearDown(): void
+    #[AfterTest]
+    public function tearDown(): void
     {
         $this->db->close();
     }
 
-    #[Test]
     public function createsAndDropsExperimentsTable(): void
     {
         $migration = new M260610000000CreateAbExperimentsTable();
@@ -51,29 +53,27 @@ final class MigrationTest extends TestCase
         $migration->up($this->builder);
 
         $schema = $this->db->getTableSchema('ab_experiments', true);
-        $this->assertNotNull($schema);
-        $this->assertNotNull($schema->getColumn('name'));
-        $this->assertNotNull($schema->getColumn('enabled'));
-        $this->assertNotNull($schema->getColumn('salt'));
-        $this->assertNotNull($schema->getColumn('fallback_variant'));
-        $this->assertNotNull($schema->getColumn('variants'));
-        $this->assertSame(['name'], $schema->getPrimaryKey());
+        Assert::notNull($schema);
+        Assert::notNull($schema->getColumn('name'));
+        Assert::notNull($schema->getColumn('enabled'));
+        Assert::notNull($schema->getColumn('salt'));
+        Assert::notNull($schema->getColumn('fallback_variant'));
+        Assert::notNull($schema->getColumn('variants'));
+        Assert::same($schema->getPrimaryKey(), ['name']);
 
         $migration->down($this->builder);
 
-        $this->assertNull($this->db->getTableSchema('ab_experiments', true));
+        Assert::null($this->db->getTableSchema('ab_experiments', true));
     }
 
-    #[Test]
     public function createsTableWithCustomName(): void
     {
         (new M260610000000CreateAbExperimentsTable(table: 'custom_experiments'))->up($this->builder);
 
-        $this->assertNotNull($this->db->getTableSchema('custom_experiments', true));
-        $this->assertNull($this->db->getTableSchema('ab_experiments', true));
+        Assert::notNull($this->db->getTableSchema('custom_experiments', true));
+        Assert::null($this->db->getTableSchema('ab_experiments', true));
     }
 
-    #[Test]
     public function migratedTableIsReadableByProvider(): void
     {
         (new M260610000000CreateAbExperimentsTable())->up($this->builder);
@@ -85,8 +85,8 @@ final class MigrationTest extends TestCase
 
         $experiments = (new DbExperimentProvider(db: $this->db))->getExperiments();
 
-        $this->assertArrayHasKey('checkout-button', $experiments);
-        $this->assertSame('control', $experiments['checkout-button']->fallbackVariant);
-        $this->assertSame(['control' => 50, 'green' => 50], $experiments['checkout-button']->variants);
+        Assert::array($experiments)->hasKeys('checkout-button');
+        Assert::same($experiments['checkout-button']->fallbackVariant, 'control');
+        Assert::same($experiments['checkout-button']->variants, ['control' => 50, 'green' => 50]);
     }
 }

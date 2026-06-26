@@ -4,191 +4,154 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
-use Psr\SimpleCache\CacheInterface;
 use Rasuvaeff\Yii3AbTesting\Experiment;
-use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Test;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 
-#[CoversClass(CachedExperimentProvider::class)]
-final class CachedExperimentProviderTest extends TestCase
+#[Test]
+#[Covers(CachedExperimentProvider::class)]
+final class CachedExperimentProviderTest
 {
     private const string CACHE_KEY = 'rasuvaeff.ab-testing.experiments';
 
-    #[Test]
-    public function loadsFromInnerOnMissAndStoresWithKeyAndDefaultTtl(): void
+    public function loadsFromInnerOnMissAndStoresInCache(): void
     {
         $experiment = $this->experiment('test-exp');
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn(['test-exp' => $experiment]);
-
-        $cache = $this->createMock(CacheInterface::class);
-        $cache->method('get')->willReturn(null);
-        $cache->expects($this->once())->method('set')->with(
-            key: self::CACHE_KEY,
-            value: ['test-exp' => $experiment],
-            ttl: 60,
-        );
+        $inner = new FakeProvider(['test-exp' => $experiment]);
+        $cache = new MemorySimpleCache();
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: $cache);
         $result = $provider->getExperiments();
 
-        $this->assertArrayHasKey('test-exp', $result);
-        $this->assertSame('test-exp', $result['test-exp']->name);
+        Assert::array($result)->hasKeys('test-exp');
+        Assert::same($result['test-exp']->name, 'test-exp');
+        Assert::true($cache->has(self::CACHE_KEY));
     }
 
-    #[Test]
     public function passesConfiguredTtlToCache(): void
     {
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn([]);
-
-        $cache = $this->createMock(CacheInterface::class);
-        $cache->method('get')->willReturn(null);
-        $cache->expects($this->once())->method('set')->with(
-            key: self::CACHE_KEY,
-            value: [],
-            ttl: 120,
-        );
+        $inner = new FakeProvider([]);
+        $cache = new MemorySimpleCache();
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 120);
         $provider->getExperiments();
+
+        Assert::true($cache->has(self::CACHE_KEY));
     }
 
-    #[Test]
     public function returnsCachedWithoutCallingInnerOnHit(): void
     {
         $cache = new MemorySimpleCache();
         $cache->set(self::CACHE_KEY, ['exp-a' => $this->experiment('exp-a'), 'exp-b' => $this->experiment('exp-b')]);
 
-        $inner = $this->createMock(ExperimentProvider::class);
-        $inner->expects($this->never())->method('getExperiments');
+        $inner = new FakeProvider([]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 60);
         $result = $provider->getExperiments();
 
-        $this->assertCount(2, $result);
-        $this->assertArrayHasKey('exp-a', $result);
-        $this->assertArrayHasKey('exp-b', $result);
+        Assert::count($result, 2);
+        Assert::array($result)->hasKeys('exp-a', 'exp-b');
+        Assert::same($inner->callCount, 0);
     }
 
-    #[Test]
     public function roundTripServesSecondCallFromCache(): void
     {
         $experiments = ['exp-a' => $this->experiment('exp-a'), 'exp-b' => $this->experiment('exp-b')];
-        $inner = $this->createMock(ExperimentProvider::class);
-        $inner->expects($this->once())->method('getExperiments')->willReturn($experiments);
+        $inner = new FakeProvider($experiments);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: new MemorySimpleCache(), ttl: 60);
 
         $first = $provider->getExperiments();
         $second = $provider->getExperiments();
 
-        $this->assertCount(2, $first);
-        $this->assertCount(2, $second);
-        $this->assertArrayHasKey('exp-b', $first);
-        $this->assertArrayHasKey('exp-b', $second);
+        Assert::count($first, 2);
+        Assert::count($second, 2);
+        Assert::array($first)->hasKeys('exp-b');
+        Assert::array($second)->hasKeys('exp-b');
+        Assert::same($inner->callCount, 1);
     }
 
-    #[Test]
     public function clearRemovesCachedKey(): void
     {
         $cache = new MemorySimpleCache();
         $cache->set(self::CACHE_KEY, ['rt-exp' => $this->experiment('rt-exp')]);
 
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn([]);
+        $inner = new FakeProvider([]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 60);
         $provider->clear();
 
-        $this->assertFalse($cache->has(self::CACHE_KEY));
+        Assert::false($cache->has(self::CACHE_KEY));
     }
 
-    #[Test]
     public function clearForcesReloadFromInner(): void
     {
         $experiment = $this->experiment('rt-exp');
-        $inner = $this->createMock(ExperimentProvider::class);
-        $inner->expects($this->exactly(2))->method('getExperiments')->willReturn(['rt-exp' => $experiment]);
+        $inner = new FakeProvider(['rt-exp' => $experiment]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: new MemorySimpleCache(), ttl: 60);
 
         $provider->getExperiments();
         $provider->clear();
         $provider->getExperiments();
+
+        Assert::same($inner->callCount, 2);
     }
 
-    #[Test]
     public function fallsBackToInnerWhenCacheReadAndWriteFail(): void
     {
         $experiment = $this->experiment('rt-exp');
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn(['rt-exp' => $experiment]);
+        $inner = new FakeProvider(['rt-exp' => $experiment]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: new ThrowingCache(), ttl: 60);
         $result = $provider->getExperiments();
 
-        $this->assertArrayHasKey('rt-exp', $result);
-        $this->assertSame('rt-exp', $result['rt-exp']->name);
+        Assert::array($result)->hasKeys('rt-exp');
+        Assert::same($result['rt-exp']->name, 'rt-exp');
     }
 
-    #[Test]
     public function fallsBackToInnerWhenCacheBackendIsDown(): void
     {
         $experiment = $this->experiment('rt-exp');
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn(['rt-exp' => $experiment]);
+        $inner = new FakeProvider(['rt-exp' => $experiment]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: new BrokenCache(), ttl: 60);
         $result = $provider->getExperiments();
 
-        $this->assertArrayHasKey('rt-exp', $result);
-        $this->assertSame('rt-exp', $result['rt-exp']->name);
+        Assert::array($result)->hasKeys('rt-exp');
+        Assert::same($result['rt-exp']->name, 'rt-exp');
     }
 
-    #[Test]
     public function clearIsNonFatalWhenCacheBackendIsDown(): void
     {
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn([]);
+        $inner = new FakeProvider([]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: new BrokenCache(), ttl: 60);
-
-        $this->expectNotToPerformAssertions();
-
         $provider->clear();
     }
 
-    #[Test]
     public function ignoresCorruptedNonArrayCacheValue(): void
     {
         $cache = new MemorySimpleCache();
         $cache->set(self::CACHE_KEY, 'corrupted');
 
         $experiment = $this->experiment('rt-exp');
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn(['rt-exp' => $experiment]);
+        $inner = new FakeProvider(['rt-exp' => $experiment]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 60);
         $result = $provider->getExperiments();
 
-        $this->assertArrayHasKey('rt-exp', $result);
+        Assert::array($result)->hasKeys('rt-exp');
     }
 
-    #[Test]
     public function clearIsNonFatalWhenCacheThrows(): void
     {
-        $inner = $this->createStub(ExperimentProvider::class);
-        $inner->method('getExperiments')->willReturn([]);
+        $inner = new FakeProvider([]);
 
         $provider = new CachedExperimentProvider(inner: $inner, cache: new ThrowingCache(), ttl: 60);
-
-        $this->expectNotToPerformAssertions();
-
         $provider->clear();
     }
 

@@ -10,6 +10,14 @@ use Testo\Bench\BenchmarkPlugin;
 return new ApplicationConfig(
     suites: [
         new SuiteConfig(
+            name: 'Unit',
+            location: new FinderConfig(include: ['tests'], exclude: ['tests/Integration']),
+        ),
+        new SuiteConfig(
+            name: 'Integration',
+            location: new FinderConfig(include: ['tests/Integration']),
+        ),
+        new SuiteConfig(
             name: 'Benchmarks',
             location: new FinderConfig(include: ['benchmarks']),
             plugins: [new BenchmarkPlugin()],

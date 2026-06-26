@@ -66,7 +66,7 @@ final class ExperimentRowMapper
     {
         if (!\array_key_exists($column, $row)) {
             throw new Exception\InvalidExperimentRowException(
-                message: sprintf('Missing or invalid column "%s" in experiment row', $column),
+                message: sprintf('Missing column "%s" in experiment row', $column),
             );
         }
 
