@@ -46,8 +46,17 @@ docker run --rm -v "$PWD":/app -w /app composer:2 composer psalm
 docker run --rm -v "$PWD":/app -w /app composer:2 composer test
 ```
 
-Or with Make: `make build`, `make cs-fix`, `make psalm`, `make test`,
-`make test-coverage`, `make mutation`.
+Or with Make:
+
+```bash
+make build
+make cs-fix
+make psalm
+make test
+make test-coverage
+make mutation
+make release-check
+```
 
 `composer.lock` is gitignored (library). `make test-coverage` and `make mutation`
 bootstrap `pcov` inside the `composer:2` container.

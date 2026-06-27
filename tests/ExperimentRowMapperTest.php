@@ -4,10 +4,6 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
-use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Test;
-use PHPUnit\Framework\TestCase;
 use Rasuvaeff\Yii3AbTesting\AndTargetingRule;
 use Rasuvaeff\Yii3AbTesting\AssignmentContext;
 use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
@@ -15,19 +11,24 @@ use Rasuvaeff\Yii3AbTesting\EnvironmentTargetingRule;
 use Rasuvaeff\Yii3AbTesting\OrTargetingRule;
 use Rasuvaeff\Yii3AbTestingDb\Exception\InvalidExperimentRowException;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentRowMapper;
+use Testo\Assert;
+use Testo\Codecov\Covers;
+use Testo\Data\DataProvider;
+use Testo\Lifecycle\BeforeTest;
+use Testo\Test;
 
-#[CoversClass(ExperimentRowMapper::class)]
-final class ExperimentRowMapperTest extends TestCase
+#[Test]
+#[Covers(ExperimentRowMapper::class)]
+final class ExperimentRowMapperTest
 {
     private ExperimentRowMapper $mapper;
 
-    #[\Override]
-    protected function setUp(): void
+    #[BeforeTest]
+    public function setUp(): void
     {
         $this->mapper = new ExperimentRowMapper();
     }
 
-    #[Test]
     public function mapsRowWithNativeTypes(): void
     {
         $experiment = $this->mapper->map([
@@ -38,14 +39,13 @@ final class ExperimentRowMapperTest extends TestCase
             'variants' => ['control' => 50, 'green' => 50],
         ]);
 
-        $this->assertSame('checkout-button', $experiment->name);
-        $this->assertTrue($experiment->enabled);
-        $this->assertSame('checkout-v1', $experiment->salt);
-        $this->assertSame('control', $experiment->fallbackVariant);
-        $this->assertSame(['control' => 50, 'green' => 50], $experiment->variants);
+        Assert::same($experiment->name, 'checkout-button');
+        Assert::true($experiment->enabled);
+        Assert::same($experiment->salt, 'checkout-v1');
+        Assert::same($experiment->fallbackVariant, 'control');
+        Assert::same($experiment->variants, ['control' => 50, 'green' => 50]);
     }
 
-    #[Test]
     public function mapsRowWithStringScalars(): void
     {
         $experiment = $this->mapper->map([
@@ -56,8 +56,8 @@ final class ExperimentRowMapperTest extends TestCase
             'variants' => '{"control":75,"green":25}',
         ]);
 
-        $this->assertTrue($experiment->enabled);
-        $this->assertSame(['control' => 75, 'green' => 25], $experiment->variants);
+        Assert::true($experiment->enabled);
+        Assert::same($experiment->variants, ['control' => 75, 'green' => 25]);
     }
 
     /**
@@ -76,42 +76,63 @@ final class ExperimentRowMapperTest extends TestCase
     }
 
     #[DataProvider('boolCastProvider')]
-    #[Test]
     public function castsEnabledColumn(bool|int|string $raw, bool $expected): void
     {
-        $this->assertSame($expected, $this->mapper->map($this->row(enabled: $raw))->enabled);
+        Assert::same($this->mapper->map($this->row(enabled: $raw))->enabled, $expected);
     }
 
-    #[Test]
     public function emptySaltFallsBackToName(): void
     {
         $experiment = $this->mapper->map($this->row(name: 'my-exp', salt: ''));
 
-        $this->assertSame('my-exp', $experiment->salt);
+        Assert::same($experiment->salt, 'my-exp');
     }
 
-    #[Test]
     public function readsVariantsFromNativeArray(): void
     {
         $experiment = $this->mapper->map($this->row(variants: ['control' => 10, 'green' => 90]));
 
-        $this->assertSame(['control' => 10, 'green' => 90], $experiment->variants);
+        Assert::same($experiment->variants, ['control' => 10, 'green' => 90]);
     }
 
-    #[Test]
     public function readsVariantsFromJsonObject(): void
     {
         $experiment = $this->mapper->map($this->row(variants: '{"control":10,"green":90}'));
 
-        $this->assertSame(['control' => 10, 'green' => 90], $experiment->variants);
+        Assert::same($experiment->variants, ['control' => 10, 'green' => 90]);
     }
 
-    #[Test]
     public function acceptsZeroWeightVariant(): void
     {
         $experiment = $this->mapper->map($this->row(variants: ['control' => 100, 'green' => 0]));
 
-        $this->assertSame(['control' => 100, 'green' => 0], $experiment->variants);
+        Assert::same($experiment->variants, ['control' => 100, 'green' => 0]);
+    }
+
+    public function throwsOnMissingEnabledKey(): void
+    {
+        try {
+            $this->mapper->map(self::without($this->row(), 'enabled'));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::string($e->getMessage())->contains('Missing column "enabled"');
+        }
+
+        Assert::true(true);
+    }
+
+    public function throwsOnInvalidEnabledType(): void
+    {
+        try {
+            $row = $this->row();
+            $row['enabled'] = [];
+            $this->mapper->map($row);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::string($e->getMessage())->contains('Missing or invalid column "enabled"');
+        }
+
+        Assert::true(true);
     }
 
     /**
@@ -132,6 +153,7 @@ final class ExperimentRowMapperTest extends TestCase
         yield 'missing salt' => [self::without($base, 'salt'), 'salt'];
         yield 'non-string salt' => [['salt' => 5] + $base, 'salt'];
         yield 'missing enabled' => [self::without($base, 'enabled'), 'enabled'];
+        yield 'non-bool enabled' => [['enabled' => []] + $base, 'enabled'];
         yield 'null enabled' => [['enabled' => null] + $base, 'enabled'];
         yield 'missing fallback_variant' => [self::without($base, 'fallback_variant'), 'fallback_variant'];
         yield 'non-string fallback_variant' => [['fallback_variant' => 5] + $base, 'fallback_variant'];
@@ -149,107 +171,107 @@ final class ExperimentRowMapperTest extends TestCase
      * @param array<string, mixed> $row
      */
     #[DataProvider('invalidRowProvider')]
-    #[Test]
     public function throwsOnInvalidRow(array $row, string $needle): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/' . preg_quote($needle, '/') . '/');
+        try {
+            $this->mapper->map($row);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), $needle));
+        }
 
-        $this->mapper->map($row);
+        Assert::true(true);
     }
 
-    #[Test]
     public function wrapsCoreExceptionForInvalidName(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessage('Invalid experiment "Bad-Name" in DB row');
-
-        $this->mapper->map($this->row(name: 'Bad-Name'));
+        try {
+            $this->mapper->map($this->row(name: 'Bad-Name'));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Invalid experiment "Bad-Name" in DB row'));
+        }
     }
 
-    #[Test]
     public function wrapsCoreExceptionForInvalidVariantName(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessage('Invalid experiment "exp" in DB row');
-
-        // An invalid variant *name* makes the core Experiment throw
-        // InvalidVariantException (not InvalidExperimentException) — both must be wrapped.
-        $this->mapper->map($this->row(fallbackVariant: 'Bad-Variant', variants: ['Bad-Variant' => 50]));
+        try {
+            $this->mapper->map($this->row(fallbackVariant: 'Bad-Variant', variants: ['Bad-Variant' => 50]));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Invalid experiment "exp" in DB row'));
+        }
     }
 
-    #[Test]
     public function wrapsCoreExceptionForUnknownFallback(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessage('Invalid experiment "exp" in DB row');
-
-        $this->mapper->map($this->row(fallbackVariant: 'missing'));
+        try {
+            $this->mapper->map($this->row(fallbackVariant: 'missing'));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Invalid experiment "exp" in DB row'));
+        }
     }
 
-    #[Test]
     public function wrapsCoreExceptionForEmptyVariants(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessage('Invalid experiment "exp" in DB row');
-
-        $this->mapper->map($this->row(variants: '{}'));
+        try {
+            $this->mapper->map($this->row(variants: '{}'));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Invalid experiment "exp" in DB row'));
+        }
     }
 
-    #[Test]
     public function wrapsCoreExceptionForZeroTotalWeight(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessage('Invalid experiment "exp" in DB row');
-
-        $this->mapper->map($this->row(fallbackVariant: 'control', variants: ['control' => 0]));
+        try {
+            $this->mapper->map($this->row(fallbackVariant: 'control', variants: ['control' => 0]));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Invalid experiment "exp" in DB row'));
+        }
     }
 
-    #[Test]
     public function targetingNullWhenColumnAbsent(): void
     {
         $experiment = $this->mapper->map($this->row());
 
-        $this->assertNull($experiment->targeting);
+        Assert::null($experiment->targeting);
     }
 
-    #[Test]
     public function targetingNullWhenColumnIsNull(): void
     {
         $experiment = $this->mapper->map($this->row() + ['targeting' => null]);
 
-        $this->assertNull($experiment->targeting);
+        Assert::null($experiment->targeting);
     }
 
-    #[Test]
     public function targetingNullWhenColumnIsEmptyString(): void
     {
         $experiment = $this->mapper->map($this->row() + ['targeting' => '']);
 
-        $this->assertNull($experiment->targeting);
+        Assert::null($experiment->targeting);
     }
 
-    #[Test]
     public function decodesEnvironmentTargetingRule(): void
     {
         $experiment = $this->mapper->map(
             $this->row() + ['targeting' => '{"type":"environment","values":["production","staging"]}'],
         );
 
-        $this->assertInstanceOf(EnvironmentTargetingRule::class, $experiment->targeting);
+        Assert::instanceOf($experiment->targeting, EnvironmentTargetingRule::class);
     }
 
-    #[Test]
     public function decodesAttributeTargetingRule(): void
     {
         $experiment = $this->mapper->map(
             $this->row() + ['targeting' => '{"type":"attribute","attribute":"plan","value":"pro"}'],
         );
 
-        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+        Assert::instanceOf($experiment->targeting, AttributeTargetingRule::class);
     }
 
-    #[Test]
     public function decodesAndTargetingRuleWithNestedRules(): void
     {
         $json = json_encode([
@@ -261,10 +283,9 @@ final class ExperimentRowMapperTest extends TestCase
         ]);
         $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
 
-        $this->assertInstanceOf(AndTargetingRule::class, $experiment->targeting);
+        Assert::instanceOf($experiment->targeting, AndTargetingRule::class);
     }
 
-    #[Test]
     public function decodesOrTargetingRule(): void
     {
         $json = json_encode([
@@ -276,121 +297,127 @@ final class ExperimentRowMapperTest extends TestCase
         ]);
         $experiment = $this->mapper->map($this->row() + ['targeting' => $json]);
 
-        $this->assertInstanceOf(OrTargetingRule::class, $experiment->targeting);
+        Assert::instanceOf($experiment->targeting, OrTargetingRule::class);
     }
 
-    #[Test]
     public function throwsOnInvalidTargetingJson(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/Invalid "targeting" JSON/');
-
-        $this->mapper->map($this->row() + ['targeting' => 'not-json']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => 'not-json']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Invalid "targeting" JSON'));
+        }
     }
 
-    #[Test]
     public function throwsOnUnknownTargetingType(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/Unknown targeting rule type/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":"unknown"}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":"unknown"}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Unknown targeting rule type'));
+        }
     }
 
-    #[Test]
     public function throwsOnInvalidTargetingColumnType(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/expected JSON string or null/');
-
-        $this->mapper->map($this->row() + ['targeting' => 42]);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => 42]);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'expected JSON string or null'));
+        }
     }
 
-    #[Test]
     public function throwsOnNonStringTypeInTargeting(): void
     {
-        // type=42 → isset=true, is_string=false → $type=null → error message contains (null)
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/"\\(null\\)"/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":42}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":42}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(preg_match('/"\(null\)"/', $e->getMessage()) === 1);
+        }
     }
 
-    #[Test]
     public function throwsOnUnknownTargetingTypeIncludesTypeName(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/"unknown"/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":"unknown"}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":"unknown"}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), '"unknown"'));
+        }
     }
 
-    #[Test]
     public function throwsOnEnvironmentRuleWithNonArrayValues(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/"values" must be an array/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":"environment","values":"production"}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":"environment","values":"production"}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), '"values" must be an array'));
+        }
     }
 
-    #[Test]
     public function decodesAttributeTargetingRuleWithIntValue(): void
     {
         $experiment = $this->mapper->map(
             $this->row() + ['targeting' => '{"type":"attribute","attribute":"count","value":42}'],
         );
 
-        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+        Assert::instanceOf($experiment->targeting, AttributeTargetingRule::class);
     }
 
-    #[Test]
     public function decodesAttributeTargetingRuleWithFloatValue(): void
     {
         $experiment = $this->mapper->map(
             $this->row() + ['targeting' => '{"type":"attribute","attribute":"score","value":3.14}'],
         );
 
-        $this->assertInstanceOf(AttributeTargetingRule::class, $experiment->targeting);
+        Assert::instanceOf($experiment->targeting, AttributeTargetingRule::class);
     }
 
-    #[Test]
     public function throwsOnAttributeRuleWithInvalidValueType(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/Invalid targeting attribute value type/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":"attribute","attribute":"x","value":{"nested":"obj"}}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":"attribute","attribute":"x","value":{"nested":"obj"}}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), 'Invalid targeting attribute value type'));
+        }
     }
 
-    #[Test]
     public function throwsOnAttributeRuleWithNonStringAttribute(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/"attribute" must be a string/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":"attribute","attribute":99,"value":"x"}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":"attribute","attribute":99,"value":"x"}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), '"attribute" must be a string'));
+        }
     }
 
-    #[Test]
     public function throwsOnAndRuleWithNonArrayRules(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/"rules" must be an array/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":"and","rules":"invalid"}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":"and","rules":"invalid"}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), '"rules" must be an array'));
+        }
     }
 
-    #[Test]
     public function throwsOnOrRuleWithNonArrayRules(): void
     {
-        $this->expectException(InvalidExperimentRowException::class);
-        $this->expectExceptionMessageMatches('/"rules" must be an array/');
-
-        $this->mapper->map($this->row() + ['targeting' => '{"type":"or","rules":"invalid"}']);
+        try {
+            $this->mapper->map($this->row() + ['targeting' => '{"type":"or","rules":"invalid"}']);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::true(str_contains($e->getMessage(), '"rules" must be an array'));
+        }
     }
 
-    #[Test]
     public function builtCompositeRuleMatchesContext(): void
     {
         $json = json_encode([
@@ -406,12 +433,11 @@ final class ExperimentRowMapperTest extends TestCase
             ->withAttribute(name: 'plan', value: 'pro');
         $mismatch = AssignmentContext::forEnvironment('staging');
 
-        $this->assertNotNull($experiment->targeting);
-        $this->assertTrue($experiment->targeting->matches($matching));
-        $this->assertFalse($experiment->targeting->matches($mismatch));
+        Assert::notNull($experiment->targeting);
+        Assert::true($experiment->targeting->matches($matching));
+        Assert::false($experiment->targeting->matches($mismatch));
     }
 
-    #[Test]
     public function builtOrRuleMatchesContext(): void
     {
         $json = json_encode([
@@ -427,10 +453,22 @@ final class ExperimentRowMapperTest extends TestCase
         $matchAttr = AssignmentContext::empty()->withAttribute(name: 'beta', value: true);
         $noMatch = AssignmentContext::forEnvironment('staging');
 
-        $this->assertNotNull($experiment->targeting);
-        $this->assertTrue($experiment->targeting->matches($matchEnv));
-        $this->assertTrue($experiment->targeting->matches($matchAttr));
-        $this->assertFalse($experiment->targeting->matches($noMatch));
+        Assert::notNull($experiment->targeting);
+        Assert::true($experiment->targeting->matches($matchEnv));
+        Assert::true($experiment->targeting->matches($matchAttr));
+        Assert::false($experiment->targeting->matches($noMatch));
+    }
+
+    public function throwsOnMissingVariantsKey(): void
+    {
+        try {
+            $this->mapper->map(self::without($this->row(), 'variants'));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::same($e->getMessage(), 'Missing column "variants" in experiment row');
+        }
+
+        Assert::true(true);
     }
 
     /**

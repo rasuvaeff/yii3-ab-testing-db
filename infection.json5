@@ -10,6 +10,8 @@
     "phpUnit": {
         "configDir": "."
     },
+    "testFramework": "testo",
+    "testFrameworkOptions": "--suite=Unit",
     "minMsi": 100,
     "mutators": {
         "@default": true
