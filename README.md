@@ -6,6 +6,7 @@
 [![Static Analysis](https://img.shields.io/github/actions/workflow/status/rasuvaeff/yii3-ab-testing-db/static-analysis.yml?branch=master&label=static%20analysis)](https://github.com/rasuvaeff/yii3-ab-testing-db/actions)
 [![PHP](https://img.shields.io/packagist/dependency-v/rasuvaeff/yii3-ab-testing-db/php)](https://packagist.org/packages/rasuvaeff/yii3-ab-testing-db)
 [![License](https://img.shields.io/packagist/l/rasuvaeff/yii3-ab-testing-db.svg)](LICENSE.md)
+[Русская версия](README.ru.md)
 
 Database-backed experiment provider for Yii3 A/B testing. Implements the
 `ExperimentProvider` interface from `rasuvaeff/yii3-ab-testing` and reads
