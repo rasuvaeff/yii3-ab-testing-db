@@ -62,32 +62,49 @@ is rejected with `InvalidExperimentRowException`.
 
 ### Migration
 
-The package ships a migration (`migrations/`) for [yiisoft/db-migration](https://github.com/yiisoft/db-migration).
-Register the source path in your app's `config/params.php`:
+Register the bundled migration **by namespace** — no vendor paths:
 
 ```php
-'yiisoft/db-migration' => [
-    'sourcePaths' => [
-        dirname(__DIR__) . '/vendor/rasuvaeff/yii3-ab-testing-db/migrations',
-    ],
-],
-```
+// config/common/di/migration.php
+use Yiisoft\Db\Migration\Service\MigrationService;
 
-Then apply and revert it with Yii Console:
+return [
+    MigrationService::class => [
+        'setSourceNamespaces()' => [[
+            'App\\Migration',
+            'Rasuvaeff\\Yii3AbTestingDb\\Migration',
+        ]],
+    ],
+];
+```
 
 ```bash
 ./yii migrate:up
 ./yii migrate:down --limit=1
 ```
 
-The table name defaults to `ab_experiments` and must match the `table` argument of
-`DbExperimentProvider`. To use a custom name, bind the migration constructor argument:
+Set the table name in params — the same value reaches the migration **and**
+`DbExperimentProvider`:
 
 ```php
-M260610000000CreateAbExperimentsTable::class => [
-    '__construct()' => ['table' => 'my_ab_experiments'],
+// config/common/params.php
+'rasuvaeff/yii3-ab-testing-db' => [
+    'table' => 'my_ab_experiments',
+    'table_prefix' => '',   // prepended to `table`; e.g. 'rsv_' → rsv_my_ab_experiments
 ],
 ```
+
+Both bundled migrations (`M260610000000CreateAbExperimentsTable` and
+`M260619000001AddTargetingToAbExperiments`) take the same table name, so the
+`CREATE` and the later `ALTER` can no longer target different tables.
+
+> **Do not configure the migration through the DI container.**
+> `M...::class => ['__construct()' => ['table' => ...]]` does not work: the
+> migration is built by `Injector::make()`, which resolves arguments by type
+> and never reads a container definition keyed by the migration's own class.
+> Worse, adding that definition makes the container fatal at build time in
+> **every** request, because the class is not autoloadable until the migration
+> runner requires it. That recipe was documented in 1.x; it never worked.
 
 ## Usage
 

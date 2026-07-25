@@ -10,6 +10,7 @@ use Rasuvaeff\Yii3AbTesting\AssignmentStrategy;
 use Rasuvaeff\Yii3AbTesting\ConversionTracker;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTesting\ExposureTracker;
+use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
 use Testo\Assert;
@@ -61,7 +62,10 @@ final class ConfigWiringTest
     {
         $definitions = $this->loadDb([]);
 
-        Assert::same(array_keys($definitions), [ExperimentProvider::class]);
+        // AbExperimentsTableName is this package's own type; the core binds
+        // neither it nor ExperimentProvider, so there is nothing for
+        // yiisoft/config to call a duplicate
+        Assert::same(array_keys($definitions), [AbExperimentsTableName::class, ExperimentProvider::class]);
     }
 
     public function coreBindsFacadeAndStrategyButNotSwappableKeys(): void
@@ -89,7 +93,10 @@ final class ConfigWiringTest
 
         $container = new SimpleContainer([CacheInterface::class => new MemorySimpleCache()]);
 
-        $provider = $factory($this->sqlite(), $container);
+        $tableFactory = $definitions[AbExperimentsTableName::class];
+        Assert::true(is_callable($tableFactory));
+
+        $provider = $factory($this->sqlite(), $container, $tableFactory());
         Assert::instanceOf($provider, ExperimentProvider::class);
 
         return $provider;

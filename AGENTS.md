@@ -73,8 +73,19 @@ bootstrap `pcov` inside the `composer:2` container.
 - Empty `salt` falls back to the experiment `name` (the column default is `''`).
 - Row → `Experiment` mapping lives in `ExperimentRowMapper` (pure, unit-tested).
   The provider is covered by the SQLite integration test.
-- Migrations are loaded by `yiisoft/db-migration` via `sourcePaths`
-  (global-namespace class in `migrations/`); the table name is a constructor arg.
+- **Migrations live in `src/Migration/` under the package namespace** and are
+  registered with `setSourceNamespaces()`. The table name is
+  `AbExperimentsTableName`, a VO — `Injector::make()` resolves arguments by name
+  or type and never reads a container definition keyed by the migration's class,
+  so a scalar `string $table` could not be configured at all. Never reintroduce
+  one.
+- **Both migrations take the SAME value object.** They used to hard-code their
+  own defaults independently, so a configured table got CREATEd under the custom
+  name while the ALTER went to `ab_experiments`.
+- Migrations are covered by cs, psalm and infection like any other source file;
+  `MigrationTableNameTest` asserts the column set through the real `Injector`.
+- `composer test` runs only the Unit suite; `composer mutation` runs every
+  suite.
 - `CachedExperimentProvider` caches the whole set; invalidation by TTL or
   `clear()`. Any cache failure is non-fatal (`\Throwable` is caught: down backend,
   corrupted payload) — reads fall back to the inner provider. Cache key

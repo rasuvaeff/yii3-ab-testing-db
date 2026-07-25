@@ -14,13 +14,21 @@ use Yiisoft\Db\Query\Query;
  */
 final readonly class DbExperimentProvider implements ExperimentProvider
 {
+    private string $table;
+
     /**
      * @param non-empty-string $table
+     *
+     * @throws \InvalidArgumentException when the name is not a valid identifier
      */
     public function __construct(
         private ConnectionInterface $db,
-        private string $table = 'ab_experiments',
-    ) {}
+        string $table = 'ab_experiments',
+    ) {
+        // validation lives in the value object, so the provider and the bundled
+        // migrations cannot disagree about what a valid table name is
+        $this->table = (new AbExperimentsTableName($table))->value;
+    }
 
     /**
      * @return array<string, Experiment>

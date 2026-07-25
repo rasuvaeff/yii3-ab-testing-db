@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+namespace Rasuvaeff\Yii3AbTestingDb\Migration;
+
+use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Yiisoft\Db\Migration\MigrationBuilder;
 use Yiisoft\Db\Migration\RevertibleMigrationInterface;
 use Yiisoft\Db\Migration\TransactionalMigrationInterface;
@@ -21,25 +24,28 @@ use Yiisoft\Db\Migration\TransactionalMigrationInterface;
  * ```
  *
  * NULL means all subjects are eligible (legacy behaviour).
+ *
+ * Takes the SAME {@see AbExperimentsTableName} as the create migration: in 1.x
+ * both hard-coded their own default, so a configured table got CREATEd under
+ * the custom name while this ALTER went to `ab_experiments` — or failed.
+ *
+ * @api
  */
 final class M260619000001AddTargetingToAbExperiments implements RevertibleMigrationInterface, TransactionalMigrationInterface
 {
-    /**
-     * @param non-empty-string $table
-     */
     public function __construct(
-        private readonly string $table = 'ab_experiments',
+        private readonly AbExperimentsTableName $table = new AbExperimentsTableName(),
     ) {}
 
     #[\Override]
     public function up(MigrationBuilder $b): void
     {
-        $b->addColumn(table: $this->table, column: 'targeting', type: 'text NULL DEFAULT NULL');
+        $b->addColumn(table: $this->table->value, column: 'targeting', type: 'text NULL DEFAULT NULL');
     }
 
     #[\Override]
     public function down(MigrationBuilder $b): void
     {
-        $b->dropColumn(table: $this->table, column: 'targeting');
+        $b->dropColumn(table: $this->table->value, column: 'targeting');
     }
 }
