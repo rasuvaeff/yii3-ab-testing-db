@@ -63,34 +63,50 @@ CREATE TABLE ab_experiments (
 
 ### Миграция
 
-Пакет поставляет миграцию (`migrations/`) для
-[yiisoft/db-migration](https://github.com/yiisoft/db-migration). Зарегистрируйте
-исходный путь в `config/params.php` приложения:
+Регистрируйте поставляемую миграцию **по namespace** — без путей в `vendor/`:
 
 ```php
-'yiisoft/db-migration' => [
-    'sourcePaths' => [
-        dirname(__DIR__) . '/vendor/rasuvaeff/yii3-ab-testing-db/migrations',
-    ],
-],
-```
+// config/common/di/migration.php
+use Yiisoft\Db\Migration\Service\MigrationService;
 
-Затем примените или откатите её через Yii Console:
+return [
+    MigrationService::class => [
+        'setSourceNamespaces()' => [[
+            'App\\Migration',
+            'Rasuvaeff\\Yii3AbTestingDb\\Migration',
+        ]],
+    ],
+];
+```
 
 ```bash
 ./yii migrate:up
 ./yii migrate:down --limit=1
 ```
 
-Имя таблицы по умолчанию — `ab_experiments`, оно должно совпадать с аргументом
-`table` у `DbExperimentProvider`. Чтобы задать собственное имя, забиндите
-аргумент конструктора миграции:
+Имя таблицы задаётся в params — то же значение получают и миграция, и
+`DbExperimentProvider`:
 
 ```php
-M260610000000CreateAbExperimentsTable::class => [
-    '__construct()' => ['table' => 'my_ab_experiments'],
+// config/common/params.php
+'rasuvaeff/yii3-ab-testing-db' => [
+    'table' => 'my_ab_experiments',
+    'table_prefix' => '',   // добавляется перед `table`; например 'rsv_' → rsv_my_ab_experiments
 ],
 ```
+
+Обе поставляемые миграции (`M260610000000CreateAbExperimentsTable` и
+`M260619000001AddTargetingToAbExperiments`) получают одно и то же имя таблицы,
+поэтому `CREATE` и последующий `ALTER` больше не могут разойтись по разным
+таблицам.
+
+> **Не настраивайте миграцию через DI-контейнер.**
+> `M...::class => ['__construct()' => ['table' => ...]]` не работает: миграцию
+> создаёт `Injector::make()`, который резолвит аргументы по типу и никогда не
+> читает определение контейнера по имени класса самой миграции. Хуже того,
+> добавление такого определения роняет контейнер на этапе сборки в **каждом**
+> запросе, потому что класс не автозагружается, пока его не подключит раннер
+> миграций. Этот рецепт был описан в 1.x и никогда не работал.
 
 ## Использование
 

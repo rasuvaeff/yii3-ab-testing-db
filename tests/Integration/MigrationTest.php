@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
 
-use M260610000000CreateAbExperimentsTable;
+use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260610000000CreateAbExperimentsTable;
 use Testo\Assert;
 use Testo\Codecov\CoversNothing;
 use Testo\Lifecycle\AfterTest;
@@ -30,8 +31,6 @@ final class MigrationTest
     #[BeforeTest]
     public function setUp(): void
     {
-        require_once dirname(__DIR__, 2) . '/migrations/M260610000000CreateAbExperimentsTable.php';
-
         $driver = new SqliteDriver(dsn: 'sqlite::memory:');
         $schemaCache = new SchemaCache(psrCache: new MemorySimpleCache());
         $this->db = new SqliteConnection(driver: $driver, schemaCache: $schemaCache);
@@ -68,7 +67,7 @@ final class MigrationTest
 
     public function createsTableWithCustomName(): void
     {
-        (new M260610000000CreateAbExperimentsTable(table: 'custom_experiments'))->up($this->builder);
+        (new M260610000000CreateAbExperimentsTable(table: new AbExperimentsTableName('custom_experiments')))->up($this->builder);
 
         Assert::notNull($this->db->getTableSchema('custom_experiments', true));
         Assert::null($this->db->getTableSchema('ab_experiments', true));

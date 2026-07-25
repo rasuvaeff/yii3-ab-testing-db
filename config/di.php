@@ -6,22 +6,30 @@ use Psr\Container\ContainerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
+use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
 use Yiisoft\Db\Connection\ConnectionInterface;
 
 /** @var array $params */
 
 return [
+    // BOTH migrations resolve this by type through Injector::make(), so the
+    // CREATE and the later ALTER can never target different tables
+    AbExperimentsTableName::class => static function () use ($params): AbExperimentsTableName {
+        $config = $params['rasuvaeff/yii3-ab-testing-db'] ?? [];
+
+        return new AbExperimentsTableName(
+            ((string) ($config['table_prefix'] ?? '')) . ((string) ($config['table'] ?? 'ab_experiments')),
+        );
+    },
     ExperimentProvider::class => static function (
         ConnectionInterface $db,
         ContainerInterface $container,
+        AbExperimentsTableName $table,
     ) use ($params): ExperimentProvider {
         $config = $params['rasuvaeff/yii3-ab-testing-db'] ?? [];
 
-        $provider = new DbExperimentProvider(
-            db: $db,
-            table: $config['table'] ?? 'ab_experiments',
-        );
+        $provider = new DbExperimentProvider(db: $db, table: $table->value);
 
         $cacheConfig = $config['cache'] ?? [];
 

@@ -15,12 +15,13 @@ composer require rasuvaeff/yii3-ab-testing-db
 - Invalid row shape / malformed JSON / invalid experiment (bad name, unknown fallback, zero total weight) throws `InvalidExperimentRowException` (never silently skips; core errors wrapped).
 - `CachedExperimentProvider` is a PSR-16 decorator; any cache failure (down backend, corrupted payload) is non-fatal — it falls back to the inner provider. Cache key `rasuvaeff.ab-testing.experiments` (dot-separated; PSR-16 reserves `:`).
 - Assignment hashing, fallback, forced/disabled logic — all remain in core.
-- Ships a `yiisoft/db-migration` migration in `migrations/`; table name is a migration constructor arg (default `ab_experiments`).
+- Ships two `yiisoft/db-migration` migrations under `Rasuvaeff\Yii3AbTestingDb\Migration\` (namespaced since 2.0; register with `setSourceNamespaces()`).
+- Table name flows params (`table_prefix` + `table`) => `AbExperimentsTableName` (VO) => `DbExperimentProvider` AND both migrations. Configuring a migration through the container does NOT work: `Injector::make()` resolves by type, not by class-id.
 - Binds `ExperimentProvider` in `config/di.php` (one source only — not the `AbTesting` facade).
 
 ## Database schema
 
-Create the table via the shipped migration (register `migrations/` in
+Create the table via the shipped migrations (register the namespace in
 `yiisoft/db-migration` `sourcePaths`, run `./yii migrate:up`), or manually:
 
 ```sql
