@@ -15,7 +15,7 @@ use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 #[Covers(CachedExperimentProvider::class)]
 final class CachedExperimentProviderTest
 {
-    private const string CACHE_KEY = 'rasuvaeff.ab-testing.experiments';
+    private const string DEFAULT_NAMESPACE = 'test-default';
 
     public function loadsFromInnerOnMissAndStoresInCache(): void
     {
@@ -23,12 +23,12 @@ final class CachedExperimentProviderTest
         $inner = new FakeProvider(['test-exp' => $experiment]);
         $cache = new MemorySimpleCache();
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: $cache);
+        $provider = $this->provider(inner: $inner, cache: $cache);
         $result = $provider->getExperiments();
 
         Assert::array($result)->hasKeys('test-exp');
         Assert::same($result['test-exp']->name, 'test-exp');
-        Assert::true($cache->has(self::CACHE_KEY));
+        Assert::count($cache->getValues(), 1);
     }
 
     public function passesConfiguredTtlToCache(): void
@@ -36,20 +36,23 @@ final class CachedExperimentProviderTest
         $inner = new FakeProvider([]);
         $cache = new MemorySimpleCache();
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 120);
+        $provider = $this->provider(inner: $inner, cache: $cache, ttl: 120);
         $provider->getExperiments();
 
-        Assert::true($cache->has(self::CACHE_KEY));
+        Assert::count($cache->getValues(), 1);
     }
 
     public function returnsCachedWithoutCallingInnerOnHit(): void
     {
         $cache = new MemorySimpleCache();
-        $cache->set(self::CACHE_KEY, ['exp-a' => $this->experiment('exp-a'), 'exp-b' => $this->experiment('exp-b')]);
+        $this->seedCache(
+            cache: $cache,
+            value: ['exp-a' => $this->experiment('exp-a'), 'exp-b' => $this->experiment('exp-b')],
+        );
 
         $inner = new FakeProvider([]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: $cache);
         $result = $provider->getExperiments();
 
         Assert::count($result, 2);
@@ -62,7 +65,7 @@ final class CachedExperimentProviderTest
         $experiments = ['exp-a' => $this->experiment('exp-a'), 'exp-b' => $this->experiment('exp-b')];
         $inner = new FakeProvider($experiments);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: new MemorySimpleCache(), ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: new MemorySimpleCache());
 
         $first = $provider->getExperiments();
         $second = $provider->getExperiments();
@@ -77,14 +80,14 @@ final class CachedExperimentProviderTest
     public function clearRemovesCachedKey(): void
     {
         $cache = new MemorySimpleCache();
-        $cache->set(self::CACHE_KEY, ['rt-exp' => $this->experiment('rt-exp')]);
+        $this->seedCache(cache: $cache, value: ['rt-exp' => $this->experiment('rt-exp')]);
 
         $inner = new FakeProvider([]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: $cache);
         $provider->clear();
 
-        Assert::false($cache->has(self::CACHE_KEY));
+        Assert::same($cache->getValues(), []);
     }
 
     public function clearForcesReloadFromInner(): void
@@ -92,7 +95,7 @@ final class CachedExperimentProviderTest
         $experiment = $this->experiment('rt-exp');
         $inner = new FakeProvider(['rt-exp' => $experiment]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: new MemorySimpleCache(), ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: new MemorySimpleCache());
 
         $provider->getExperiments();
         $provider->clear();
@@ -106,7 +109,7 @@ final class CachedExperimentProviderTest
         $experiment = $this->experiment('rt-exp');
         $inner = new FakeProvider(['rt-exp' => $experiment]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: new ThrowingCache(), ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: new ThrowingCache());
         $result = $provider->getExperiments();
 
         Assert::array($result)->hasKeys('rt-exp');
@@ -118,7 +121,7 @@ final class CachedExperimentProviderTest
         $experiment = $this->experiment('rt-exp');
         $inner = new FakeProvider(['rt-exp' => $experiment]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: new BrokenCache(), ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: new BrokenCache());
         $result = $provider->getExperiments();
 
         Assert::array($result)->hasKeys('rt-exp');
@@ -129,19 +132,21 @@ final class CachedExperimentProviderTest
     {
         $inner = new FakeProvider([]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: new BrokenCache(), ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: new BrokenCache());
         $provider->clear();
+
+        Assert::same($inner->callCount, 0);
     }
 
     public function ignoresCorruptedNonArrayCacheValue(): void
     {
         $cache = new MemorySimpleCache();
-        $cache->set(self::CACHE_KEY, 'corrupted');
+        $this->seedCache(cache: $cache, value: 'corrupted');
 
         $experiment = $this->experiment('rt-exp');
         $inner = new FakeProvider(['rt-exp' => $experiment]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: $cache, ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: $cache);
         $result = $provider->getExperiments();
 
         Assert::array($result)->hasKeys('rt-exp');
@@ -151,11 +156,107 @@ final class CachedExperimentProviderTest
     {
         $inner = new FakeProvider([]);
 
-        $provider = new CachedExperimentProvider(inner: $inner, cache: new ThrowingCache(), ttl: 60);
+        $provider = $this->provider(inner: $inner, cache: new ThrowingCache());
         $provider->clear();
+
+        Assert::same($inner->callCount, 0);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<array-key, mixed>}>
+     */
+    public static function poisonedRegistryProvider(): iterable
+    {
+        yield 'scalar value' => [['exp' => 'not-an-experiment']];
+        yield 'numeric key' => [[0 => self::staticExperiment('exp')]];
+        yield 'key does not match experiment name' => [['other' => self::staticExperiment('exp')]];
+        yield 'mixed valid and invalid entries' => [[
+            'valid' => self::staticExperiment('valid'),
+            'invalid' => null,
+        ]];
+    }
+
+    /**
+     * @param array<array-key, mixed> $poisoned
+     */
+    #[\Testo\Data\DataProvider('poisonedRegistryProvider')]
+    public function poisonedArrayFallsBackToInnerAndIsReplaced(array $poisoned): void
+    {
+        $cache = new MemorySimpleCache();
+        $this->seedCache(cache: $cache, value: $poisoned);
+        $experiment = $this->experiment('fresh');
+        $inner = new FakeProvider(['fresh' => $experiment]);
+        $provider = $this->provider(inner: $inner, cache: $cache);
+
+        $result = $provider->getExperiments();
+        $second = $provider->getExperiments();
+
+        Assert::same($result, ['fresh' => $experiment]);
+        Assert::array($second)->hasKeys('fresh');
+        Assert::same($inner->callCount, 1);
+    }
+
+    public function namespacesIsolateProvidersSharingOneCache(): void
+    {
+        $cache = new MemorySimpleCache();
+        $firstInner = new FakeProvider(['first' => $this->experiment('first')]);
+        $secondInner = new FakeProvider(['second' => $this->experiment('second')]);
+        $first = new CachedExperimentProvider(
+            inner: $firstInner,
+            cache: $cache,
+            namespace: 'tenant-a',
+        );
+        $second = new CachedExperimentProvider(
+            inner: $secondInner,
+            cache: $cache,
+            namespace: 'tenant-b',
+        );
+
+        Assert::array($first->getExperiments())->hasKeys('first');
+        Assert::array($second->getExperiments())->hasKeys('second');
+        Assert::array($first->getExperiments())->hasKeys('first');
+        Assert::array($second->getExperiments())->hasKeys('second');
+        Assert::same($firstInner->callCount, 1);
+        Assert::same($secondInner->callCount, 1);
+        Assert::count($cache->getValues(), 2);
+    }
+
+    public function clearRemovesOnlyItsNamespace(): void
+    {
+        $cache = new MemorySimpleCache();
+        $first = new CachedExperimentProvider(
+            inner: new FakeProvider(['first' => $this->experiment('first')]),
+            cache: $cache,
+            namespace: 'tenant-a',
+        );
+        $second = new CachedExperimentProvider(
+            inner: new FakeProvider(['second' => $this->experiment('second')]),
+            cache: $cache,
+            namespace: 'tenant-b',
+        );
+        $first->getExperiments();
+        $second->getExperiments();
+
+        $first->clear();
+
+        Assert::count($cache->getValues(), 1);
+        Assert::array($second->getExperiments())->hasKeys('second');
+    }
+
+    public function rejectsEmptyNamespace(): void
+    {
+        \Testo\Expect::exception(\InvalidArgumentException::class)
+            ->withMessage('Cache namespace must not be empty');
+
+        new CachedExperimentProvider(inner: new FakeProvider(), cache: new MemorySimpleCache(), namespace: '');
     }
 
     private function experiment(string $name): Experiment
+    {
+        return self::staticExperiment($name);
+    }
+
+    private static function staticExperiment(string $name): Experiment
     {
         return new Experiment(
             name: $name,
@@ -163,6 +264,27 @@ final class CachedExperimentProviderTest
             salt: $name,
             fallbackVariant: 'control',
             variants: ['control' => 50, 'green' => 50],
+        );
+    }
+
+    private function provider(
+        FakeProvider $inner,
+        \Psr\SimpleCache\CacheInterface $cache,
+        int $ttl = 60,
+    ): CachedExperimentProvider {
+        return new CachedExperimentProvider(
+            inner: $inner,
+            cache: $cache,
+            ttl: $ttl,
+            namespace: self::DEFAULT_NAMESPACE,
+        );
+    }
+
+    private function seedCache(MemorySimpleCache $cache, mixed $value): void
+    {
+        $cache->set(
+            key: 'rasuvaeff.ab-testing.experiments.' . hash('sha256', self::DEFAULT_NAMESPACE),
+            value: $value,
         );
     }
 }

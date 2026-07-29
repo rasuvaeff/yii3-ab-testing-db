@@ -356,7 +356,59 @@ final class ExperimentRowMapperTest
             $this->mapper->map($this->row() + ['targeting' => '{"type":"environment","values":"production"}']);
             Assert::fail('Expected InvalidExperimentRowException');
         } catch (InvalidExperimentRowException $e) {
-            Assert::true(str_contains($e->getMessage(), '"values" must be an array'));
+            Assert::true(str_contains($e->getMessage(), '"values" must be a non-empty list'));
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function malformedTargetingProvider(): iterable
+    {
+        yield 'top-level scalar' => ['42', 'expected object'];
+        yield 'top-level list' => ['[]', 'expected object'];
+        yield 'empty environment values' => [
+            '{"type":"environment","values":[]}',
+            'non-empty list of strings',
+        ];
+        yield 'non-string environment value' => [
+            '{"type":"environment","values":["production",42]}',
+            'non-empty list of strings',
+        ];
+        yield 'associative environment values' => [
+            '{"type":"environment","values":{"primary":"production"}}',
+            'non-empty list of strings',
+        ];
+        yield 'empty and rules' => [
+            '{"type":"and","rules":[]}',
+            'non-empty list',
+        ];
+        yield 'empty or rules' => [
+            '{"type":"or","rules":[]}',
+            'non-empty list',
+        ];
+        yield 'nested scalar rule' => [
+            '{"type":"and","rules":[42]}',
+            'expected object',
+        ];
+        yield 'nested list rule' => [
+            '{"type":"or","rules":[[]]}',
+            'expected object',
+        ];
+        yield 'deep invalid environment value' => [
+            '{"type":"and","rules":[{"type":"or","rules":[{"type":"environment","values":[false]}]}]}',
+            'non-empty list of strings',
+        ];
+    }
+
+    #[DataProvider('malformedTargetingProvider')]
+    public function malformedTargetingAlwaysThrowsDocumentedException(string $targeting, string $needle): void
+    {
+        try {
+            $this->mapper->map($this->row() + ['targeting' => $targeting]);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::string($e->getMessage())->contains($needle);
         }
     }
 
@@ -404,7 +456,7 @@ final class ExperimentRowMapperTest
             $this->mapper->map($this->row() + ['targeting' => '{"type":"and","rules":"invalid"}']);
             Assert::fail('Expected InvalidExperimentRowException');
         } catch (InvalidExperimentRowException $e) {
-            Assert::true(str_contains($e->getMessage(), '"rules" must be an array'));
+            Assert::true(str_contains($e->getMessage(), '"rules" must be a non-empty list'));
         }
     }
 
@@ -414,7 +466,7 @@ final class ExperimentRowMapperTest
             $this->mapper->map($this->row() + ['targeting' => '{"type":"or","rules":"invalid"}']);
             Assert::fail('Expected InvalidExperimentRowException');
         } catch (InvalidExperimentRowException $e) {
-            Assert::true(str_contains($e->getMessage(), '"rules" must be an array'));
+            Assert::true(str_contains($e->getMessage(), '"rules" must be a non-empty list'));
         }
     }
 

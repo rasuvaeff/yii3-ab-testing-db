@@ -33,7 +33,7 @@ not the build gate.
    Throw `InvalidExperimentRowException` with a descriptive message. Core
    `Experiment` validation errors (bad name, unknown fallback, zero total weight)
    are caught and wrapped, never leaked raw.
-4. **Preserve the public contract.** Update README + tests with any API change.
+4. **Preserve the public contract.** Update both READMEs + tests with any API change.
 
 ## Commands
 
@@ -87,16 +87,20 @@ bootstrap `pcov` inside the `composer:2` container.
 - `composer test` runs only the Unit suite; `composer mutation` runs every
   suite.
 - `CachedExperimentProvider` caches the whole set; invalidation by TTL or
-  `clear()`. Any cache failure is non-fatal (`\Throwable` is caught: down backend,
-  corrupted payload) — reads fall back to the inner provider. Cache key
-  `rasuvaeff.ab-testing.experiments` is dot-separated (PSR-16 reserves `{}()/\@:`,
-  so avoid `:` in keys — `yiisoft/test-support`'s `MemorySimpleCache` rejects it).
+  `clear()`. It returns cache data only when it is a complete
+  `array<string, Experiment>` with each key equal to `Experiment::name`. Any
+  cache failure or poisoned payload falls back to inner. Cache keys use a SHA-256
+  namespace: DB table by default, optional explicit tenant/connection namespace.
+- Targeting JSON is recursively validated at runtime. Environment `values` must
+  be a non-empty list of strings; `and`/`or` rules must be non-empty lists and
+  every nested item must be a rule object. Malformed shapes always throw
+  `InvalidExperimentRowException`, never raw `TypeError` or a core exception.
 - Empty table → `[]`.
 - Code: `declare(strict_types=1)`, `final readonly class`, `#[\Override]`,
   explicit types.
 
 ## When you finish
 
-- Update `README.md` (and `examples/` if usage changed); update `CHANGELOG.md`
-  when releasing.
+- Update `README.md` and `README.ru.md` together (and `examples/` if usage
+  changed); update `CHANGELOG.md` when releasing.
 - Re-run `composer build` and paste the output.

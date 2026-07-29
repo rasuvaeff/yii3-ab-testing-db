@@ -38,6 +38,7 @@ return [
                 inner: $provider,
                 cache: $container->get(CacheInterface::class),
                 ttl: $cacheConfig['ttl'] ?? 60,
+                namespace: $cacheConfig['namespace'] ?? null,
             );
         }
 

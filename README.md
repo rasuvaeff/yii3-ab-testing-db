@@ -139,10 +139,18 @@ $cached = new CachedExperimentProvider(
     inner: $provider,
     cache: $psr16Cache,         // PSR-16 CacheInterface
     ttl: 60,                    // seconds
+    namespace: null,            // optional tenant/connection identity
 );
 
 $ab = new AbTesting(provider: $cached, strategy: new WeightedHashAssignmentStrategy());
 ```
+
+The default cache namespace includes the `DbExperimentProvider` table name, so
+providers for different tables cannot read each other's registries. When tenants
+or connections share the same table name and cache backend, set a distinct
+non-empty `namespace` (or `cache.namespace` in Yii params). Cached arrays are
+accepted only when every key is a string matching an `Experiment::name` and every
+value is an `Experiment`; an invalid payload is replaced from the inner provider.
 
 ### Clear cache
 
@@ -162,7 +170,8 @@ $cached->clear();               // removes cached experiments, next call reloads
 
 - Assignment hashing, fallback handling, forced/disabled logic remain in the core
   package — the DB adapter is only a configuration source.
-- Invalid row data (missing columns, malformed `variants` JSON, wrong types,
+- Invalid row data (missing columns, malformed `variants`/`targeting` JSON, wrong
+  types, non-string environment values, empty `and`/`or`, invalid nested rules,
   negative weights, invalid experiment name, unknown fallback, zero total weight)
   throws `InvalidExperimentRowException` instead of silently mis-assigning. Core
   validation errors are wrapped, so callers only need to catch one exception type.

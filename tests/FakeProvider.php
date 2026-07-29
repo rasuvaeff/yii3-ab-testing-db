@@ -18,7 +18,7 @@ final class FakeProvider implements ExperimentProvider
      * @param array<string, Experiment> $experiments
      */
     public function __construct(
-        private array $experiments = [],
+        private readonly array $experiments = [],
     ) {}
 
     /**

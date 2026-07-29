@@ -13,6 +13,9 @@ return [
         'cache' => [
             'enabled' => false,
             'ttl' => 60,
+            // null derives the namespace from the DB table; set a stable value
+            // to isolate tenants/connections that intentionally share a table name
+            'namespace' => null,
         ],
     ],
 ];

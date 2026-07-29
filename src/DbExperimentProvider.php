@@ -12,7 +12,7 @@ use Yiisoft\Db\Query\Query;
 /**
  * @api
  */
-final readonly class DbExperimentProvider implements ExperimentProvider
+final readonly class DbExperimentProvider implements CacheNamespaceProvider, ExperimentProvider
 {
     private string $table;
 
@@ -50,5 +50,11 @@ final readonly class DbExperimentProvider implements ExperimentProvider
         }
 
         return $experiments;
+    }
+
+    #[\Override]
+    public function getCacheNamespace(): string
+    {
+        return 'db.' . $this->table;
     }
 }

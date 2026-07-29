@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.1 — 2026-07-29
+
+- Recursively validate targeting JSON, including non-empty `and`/`or` lists and
+  string-only environment values; all malformed shapes now throw
+  `InvalidExperimentRowException`.
+- Validate every key and value in a cached experiment registry before returning
+  it; poisoned arrays fall back to and are replaced from the inner provider.
+- Namespace cache keys by DB table by default and add an optional cache
+  `namespace` for tenant/connection isolation.
+
 ## 2.0.0 — 2026-07-25
 
 **Breaking.** See [UPGRADE.md](UPGRADE.md) — an installation that already
@@ -63,4 +73,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Exception\InvalidExperimentRowException` — thrown on missing/invalid columns, malformed `variants` JSON, or invalid experiment definitions.
 - `migrations/M260610000000CreateAbExperimentsTable` — creates the `ab_experiments` table (JSON `variants` column).
 - Yii3 config-plugin: binds `ExperimentProvider` (optionally cached) from `config/di.php`; defaults in `config/params.php`.
-
