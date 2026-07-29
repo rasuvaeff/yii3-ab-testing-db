@@ -44,7 +44,12 @@ $provider = new DbExperimentProvider(db: $db, table: $config['table']);
 if (($config['cache']['enabled'] ?? false) === true) {
     // In the container the PSR-16 CacheInterface is resolved lazily, only when enabled.
     $psr16 = require __DIR__ . '/psr16-null-cache.php';
-    $provider = new CachedExperimentProvider(inner: $provider, cache: $psr16, ttl: $config['cache']['ttl']);
+    $provider = new CachedExperimentProvider(
+        inner: $provider,
+        cache: $psr16,
+        ttl: $config['cache']['ttl'],
+        namespace: $config['cache']['namespace'] ?? null,
+    );
 }
 
 // ExperimentProvider::class is now bound to $provider in the container.

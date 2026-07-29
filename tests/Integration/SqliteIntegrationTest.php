@@ -59,6 +59,13 @@ final class SqliteIntegrationTest
         Assert::same($provider->getExperiments(), []);
     }
 
+    public function cacheNamespaceIncludesTableName(): void
+    {
+        $provider = new DbExperimentProvider(db: $this->db, table: 'ab_experiments');
+
+        Assert::same($provider->getCacheNamespace(), 'db.ab_experiments');
+    }
+
     public function readsSingleExperiment(): void
     {
         $this->insertRow(

@@ -142,10 +142,19 @@ $cached = new CachedExperimentProvider(
     inner: $provider,
     cache: $psr16Cache,         // PSR-16 CacheInterface
     ttl: 60,                    // seconds
+    namespace: null,            // optional identity tenant/connection
 );
 
 $ab = new AbTesting(provider: $cached, strategy: new WeightedHashAssignmentStrategy());
 ```
+
+Default cache namespace включает имя таблицы `DbExperimentProvider`, поэтому
+провайдеры разных таблиц не читают реестры друг друга. Если tenant-ы или
+connection используют одинаковое имя таблицы и общий cache backend, задайте
+разный непустой `namespace` (или `cache.namespace` в Yii params). Массив из cache
+принимается, только если каждый строковый ключ совпадает с `Experiment::name`, а
+каждое значение является `Experiment`; невалидный payload заменяется данными
+inner provider.
 
 ### Очистка кэша
 
@@ -165,9 +174,10 @@ $cached->clear();               // removes cached experiments, next call reloads
 
 - Хэширование назначения, обработка fallback'а, логика forced/disabled остаются
   в ядерном пакете — DB-адаптер является только источником конфигурации.
-- Невалидные данные строки (отсутствующие колонки, некорректный `variants`
-  JSON, неверные типы, отрицательные веса, невалидное имя эксперимента,
-  неизвестный fallback, нулевая сумма весов) бросают
+- Невалидные данные строки (отсутствующие колонки, некорректный
+  `variants`/`targeting` JSON, неверные типы, нестроковые environment values,
+  пустые `and`/`or`, невалидные вложенные rules, отрицательные веса, невалидное
+  имя эксперимента, неизвестный fallback, нулевая сумма весов) бросают
   `InvalidExperimentRowException` вместо молчаливого искажения назначения.
   Ошибки валидации ядра оборачиваются, поэтому вызывающему коду нужно ловить
   только один тип исключения.

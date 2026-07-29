@@ -12,8 +12,8 @@ composer require rasuvaeff/yii3-ab-testing-db
 - Reads the entire experiment set in one query via yiisoft/db `Query` builder (`SELECT *`).
 - `variants` column is a JSON object `{"variant":weight}`; weights are non-negative integers; `fallback_variant` must be one of the keys.
 - Empty `salt` falls back to the experiment `name`.
-- Invalid row shape / malformed JSON / invalid experiment (bad name, unknown fallback, zero total weight) throws `InvalidExperimentRowException` (never silently skips; core errors wrapped).
-- `CachedExperimentProvider` is a PSR-16 decorator; any cache failure (down backend, corrupted payload) is non-fatal — it falls back to the inner provider. Cache key `rasuvaeff.ab-testing.experiments` (dot-separated; PSR-16 reserves `:`).
+- Invalid row shape / malformed variants or recursively malformed targeting / invalid experiment (bad name, unknown fallback, zero total weight) throws `InvalidExperimentRowException` (never silently skips; raw TypeError/core errors do not leak).
+- `CachedExperimentProvider` validates the full `array<string, Experiment>` registry; poisoned arrays and cache failures fall back to inner. Its PSR-16 key is SHA-256 namespaced by DB table by default; pass `namespace` for tenant/connection isolation when sources share a table name.
 - Assignment hashing, fallback, forced/disabled logic — all remain in core.
 - Ships two `yiisoft/db-migration` migrations under `Rasuvaeff\Yii3AbTestingDb\Migration\` (namespaced since 2.0; register with `setSourceNamespaces()`).
 - Table name flows params (`table_prefix` + `table`) => `AbExperimentsTableName` (VO) => `DbExperimentProvider` AND both migrations. Configuring a migration through the container does NOT work: `Injector::make()` resolves by type, not by class-id.
@@ -58,6 +58,7 @@ $cached = new CachedExperimentProvider(
     inner: $dbProvider,          // ExperimentProvider
     cache: $psr16,               // Psr\SimpleCache\CacheInterface
     ttl: 60,                     // int<0, max> seconds
+    namespace: null,             // ?non-empty-string; table-derived for DB provider
 );
 
 $experiments = $cached->getExperiments(); // from cache or inner
@@ -71,9 +72,9 @@ use Rasuvaeff\Yii3AbTestingDb\Exception\InvalidExperimentRowException;
 ```
 
 Thrown when a DB row is missing required columns, has wrong types, contains
-malformed `variants` JSON, or yields an invalid experiment (bad name, unknown
-fallback variant, zero total weight, negative weight). Core validation errors are
-wrapped into this exception.
+malformed `variants` JSON or a malformed recursive `targeting` tree, or yields an
+invalid experiment (bad name, unknown fallback variant, zero total weight,
+negative weight). Core validation errors are wrapped into this exception.
 
 ### Usage with AbTesting
 

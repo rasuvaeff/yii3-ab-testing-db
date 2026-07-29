@@ -29,10 +29,10 @@ use Yiisoft\Db\Migration\TransactionalMigrationInterface;
  *
  * @api
  */
-final class M260610000000CreateAbExperimentsTable implements RevertibleMigrationInterface, TransactionalMigrationInterface
+final readonly class M260610000000CreateAbExperimentsTable implements RevertibleMigrationInterface, TransactionalMigrationInterface
 {
     public function __construct(
-        private readonly AbExperimentsTableName $table = new AbExperimentsTableName(),
+        private AbExperimentsTableName $table = new AbExperimentsTableName(),
     ) {}
 
     #[\Override]

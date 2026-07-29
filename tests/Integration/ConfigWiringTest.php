@@ -58,6 +58,18 @@ final class ConfigWiringTest
         Assert::instanceOf($provider, CachedExperimentProvider::class);
     }
 
+    public function bindsCachedProviderWithCustomNamespace(): void
+    {
+        $provider = $this->resolveExperimentProvider([
+            'rasuvaeff/yii3-ab-testing-db' => [
+                'table' => 'ab_experiments',
+                'cache' => ['enabled' => true, 'ttl' => 60, 'namespace' => 'tenant-a'],
+            ],
+        ]);
+
+        Assert::instanceOf($provider, CachedExperimentProvider::class);
+    }
+
     public function packageBindsOnlyTheExperimentProviderKey(): void
     {
         $definitions = $this->loadDb([]);
@@ -109,7 +121,11 @@ final class ConfigWiringTest
      */
     private function loadDb(array $params): array
     {
-        return require dirname(__DIR__, 2) . '/config/di.php';
+        return (static function (array $config): array {
+            $params = $config;
+
+            return require dirname(__DIR__, 2) . '/config/di.php';
+        })($params);
     }
 
     /**

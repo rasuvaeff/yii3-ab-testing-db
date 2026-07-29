@@ -38,10 +38,7 @@ final class ExperimentRowMapper
                 targeting: $this->extractTargeting(row: $row),
             );
         } catch (InvalidExperimentException|InvalidVariantException $e) {
-            throw new Exception\InvalidExperimentRowException(
-                message: sprintf('Invalid experiment "%s" in DB row: %s', $name, $e->getMessage()),
-                previous: $e,
-            );
+            throw new Exception\InvalidExperimentRowException(message: sprintf('Invalid experiment "%s" in DB row: %s', $name, $e->getMessage()), code: $e->getCode(), previous: $e);
         }
     }
 
@@ -166,35 +163,52 @@ final class ExperimentRowMapper
         }
 
         try {
-            /** @var array<string, mixed> $data */
-            $data = json_decode(json: $row['targeting'], associative: true, flags: JSON_THROW_ON_ERROR);
+            return $this->buildRule(
+                data: json_decode(json: $row['targeting'], associative: true, flags: JSON_THROW_ON_ERROR),
+            );
         } catch (\JsonException) {
             throw new Exception\InvalidExperimentRowException(
                 message: sprintf('Invalid "targeting" JSON: %s', $row['targeting']),
             );
         }
-
-        return $this->buildRule(data: $data);
     }
 
-    /**
-     * @param array<string, mixed> $data
-     */
-    private function buildRule(array $data): TargetingRule
+    private function buildRule(mixed $data): TargetingRule
     {
+        if (!\is_array($data) || array_is_list($data)) {
+            throw new Exception\InvalidExperimentRowException(
+                message: sprintf(
+                    'Invalid targeting rule: expected object, got %s',
+                    get_debug_type($data),
+                ),
+            );
+        }
+
         $type = isset($data['type']) && \is_string($data['type']) ? $data['type'] : null;
 
         if ($type === 'environment') {
-            if (!isset($data['values']) || !\is_array($data['values'])) {
+            if (!isset($data['values'])
+                || !\is_array($data['values'])
+                || !array_is_list($data['values'])
+                || $data['values'] === []) {
                 throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid "environment" targeting rule: "values" must be an array',
+                    message: 'Invalid "environment" targeting rule: "values" must be a non-empty list of strings',
                 );
             }
 
-            /** @var list<string> $values */
-            $values = $data['values'];
+            $environments = [];
 
-            return new EnvironmentTargetingRule(environments: $values);
+            foreach ($data['values'] as $environment) {
+                if (!\is_string($environment)) {
+                    throw new Exception\InvalidExperimentRowException(
+                        message: 'Invalid "environment" targeting rule: "values" must be a non-empty list of strings',
+                    );
+                }
+
+                $environments[] = $environment;
+            }
+
+            return new EnvironmentTargetingRule(environments: $environments);
         }
 
         if ($type === 'attribute') {
@@ -219,29 +233,29 @@ final class ExperimentRowMapper
         }
 
         if ($type === 'and') {
-            if (!isset($data['rules']) || !\is_array($data['rules'])) {
+            if (!isset($data['rules'])
+                || !\is_array($data['rules'])
+                || !array_is_list($data['rules'])
+                || $data['rules'] === []) {
                 throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid "and" targeting rule: "rules" must be an array',
+                    message: 'Invalid "and" targeting rule: "rules" must be a non-empty list',
                 );
             }
 
-            /** @var list<array<string, mixed>> $rules */
-            $rules = $data['rules'];
-
-            return new AndTargetingRule(rules: array_map($this->buildRule(...), $rules));
+            return new AndTargetingRule(rules: array_map($this->buildRule(...), $data['rules']));
         }
 
         if ($type === 'or') {
-            if (!isset($data['rules']) || !\is_array($data['rules'])) {
+            if (!isset($data['rules'])
+                || !\is_array($data['rules'])
+                || !array_is_list($data['rules'])
+                || $data['rules'] === []) {
                 throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid "or" targeting rule: "rules" must be an array',
+                    message: 'Invalid "or" targeting rule: "rules" must be a non-empty list',
                 );
             }
 
-            /** @var list<array<string, mixed>> $rules */
-            $rules = $data['rules'];
-
-            return new OrTargetingRule(rules: array_map($this->buildRule(...), $rules));
+            return new OrTargetingRule(rules: array_map($this->buildRule(...), $data['rules']));
         }
 
         throw new Exception\InvalidExperimentRowException(
