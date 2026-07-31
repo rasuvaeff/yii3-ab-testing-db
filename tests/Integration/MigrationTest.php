@@ -97,7 +97,8 @@ final class MigrationTest
         (new M260619000001AddTargetingToAbExperiments())->up($this->builder);
         $this->db->createCommand(
             sql: "INSERT INTO ab_experiments (name, enabled, salt, fallback_variant, variants)
-                  VALUES ('paused-exp', 0, 'v1', 'control', '{\"control\":100}')",
+                  VALUES ('paused-exp', 0, 'v1', 'control', '{\"control\":100}'),
+                         ('running-exp', 1, 'v1', 'control', '{\"control\":100}')",
         )->execute();
 
         (new M260731000000AddOperationalFieldsToAbExperiments())->up($this->builder);
@@ -109,8 +110,29 @@ final class MigrationTest
         Assert::notNull($schema->getColumn('created_at'));
         Assert::notNull($schema->getColumn('updated_at'));
 
-        $row = $this->db->createCommand("SELECT state, revision FROM ab_experiments WHERE name = 'paused-exp'")->queryOne();
-        Assert::same($row['state'], 'paused');
-        Assert::same((int) $row['revision'], 1);
+        $paused = $this->row('paused-exp');
+        Assert::same($paused['state'], 'paused');
+        Assert::same((int) $paused['revision'], 1);
+
+        $running = $this->row('running-exp');
+        Assert::same($running['state'], 'running');
+        Assert::same((int) $running['revision'], 1);
+
+        foreach ([$paused, $running] as $row) {
+            Assert::false(str_starts_with((string) $row['created_at'], '1970-'));
+            Assert::same($row['created_at'], $row['updated_at']);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function row(string $name): array
+    {
+        /** @var array<string, mixed> $row */
+        $row = $this->db->createCommand(
+            sql: 'SELECT state, revision, created_at, updated_at FROM ab_experiments WHERE name = :name',
+            params: ['name' => $name],
+        )->queryOne();
+
+        return $row;
     }
 }

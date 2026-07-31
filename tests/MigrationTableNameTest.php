@@ -107,6 +107,50 @@ final class MigrationTableNameTest
         ]);
     }
 
+    public function operationalFieldsBackfillExistingRowsFromTheEnabledFlag(): void
+    {
+        // the backfill runs once per installation and cannot be re-run: a row
+        // left in the wrong lifecycle state would silently misreport a running
+        // experiment as paused (and vice versa) in every later listing
+        $builder = $this->builder();
+        $container = new SimpleContainer([]);
+
+        $this->create($container)->up($builder);
+        $this->addTargeting($container)->up($builder);
+        $this->db->createCommand(
+            sql: "INSERT INTO ab_experiments (name, enabled, salt, fallback_variant, variants)
+                  VALUES ('paused-exp', 0, 'v1', 'control', '{\"control\":100}'),
+                         ('running-exp', 1, 'v1', 'control', '{\"control\":100}')",
+        )->execute();
+
+        $this->addOperationalFields($container)->up($builder);
+
+        $paused = $this->row('paused-exp');
+        $running = $this->row('running-exp');
+
+        Assert::same($paused['state'], 'paused');
+        Assert::same($running['state'], 'running');
+
+        foreach ([$paused, $running] as $row) {
+            Assert::same((int) $row['revision'], 1);
+            Assert::false(str_starts_with((string) $row['created_at'], '1970-'));
+            Assert::false(str_starts_with((string) $row['updated_at'], '1970-'));
+            Assert::same($row['created_at'], $row['updated_at']);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function row(string $name): array
+    {
+        /** @var array<string, mixed> $row */
+        $row = $this->db->createCommand(
+            sql: 'SELECT state, revision, created_at, updated_at FROM ab_experiments WHERE name = :name',
+            params: ['name' => $name],
+        )->queryOne();
+
+        return $row;
+    }
+
     public function downDropsTheConfiguredTable(): void
     {
         // only the create migration's down() is exercised here: yiisoft/db's
