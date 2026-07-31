@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 — 2026-08-01
 
 - Add `ExperimentRepository` / `DbExperimentRepository` with create, upsert,
   enable, disable, reweight and archive operations.
