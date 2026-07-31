@@ -76,7 +76,12 @@ $db->createCommand(
         enabled          INTEGER      NOT NULL DEFAULT 1,
         salt             VARCHAR(190) NOT NULL DEFAULT '',
         fallback_variant VARCHAR(190) NOT NULL DEFAULT '',
-        variants         TEXT         NOT NULL DEFAULT '{}'
+        variants         TEXT         NOT NULL DEFAULT '{}',
+        targeting        TEXT         NULL,
+        state            VARCHAR(20)  NOT NULL DEFAULT 'running',
+        revision         INTEGER      NOT NULL DEFAULT 1,
+        created_at       VARCHAR(32)  NOT NULL DEFAULT '1970-01-01 00:00:00.000000',
+        updated_at       VARCHAR(32)  NOT NULL DEFAULT '1970-01-01 00:00:00.000000'
     )",
 )->execute();
 

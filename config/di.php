@@ -5,9 +5,13 @@ declare(strict_types=1);
 use Psr\Container\ContainerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
+use Rasuvaeff\Yii3AbTesting\TargetingRuleCodecRegistry;
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
+use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentCacheInvalidator;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentRepository;
 use Yiisoft\Db\Connection\ConnectionInterface;
 
 /** @var array $params */
@@ -26,10 +30,15 @@ return [
         ConnectionInterface $db,
         ContainerInterface $container,
         AbExperimentsTableName $table,
+        TargetingRuleCodecRegistry $targetingCodecs,
     ) use ($params): ExperimentProvider {
         $config = $params['rasuvaeff/yii3-ab-testing-db'] ?? [];
 
-        $provider = new DbExperimentProvider(db: $db, table: $table->value);
+        $provider = new DbExperimentProvider(
+            db: $db,
+            table: $table->value,
+            targetingCodecs: $targetingCodecs,
+        );
 
         $cacheConfig = $config['cache'] ?? [];
 
@@ -43,5 +52,18 @@ return [
         }
 
         return $provider;
+    },
+    ExperimentRepository::class => static function (
+        ConnectionInterface $db,
+        AbExperimentsTableName $table,
+        TargetingRuleCodecRegistry $targetingCodecs,
+        ExperimentProvider $provider,
+    ): ExperimentRepository {
+        return new DbExperimentRepository(
+            db: $db,
+            table: $table->value,
+            targetingCodecs: $targetingCodecs,
+            cacheInvalidator: $provider instanceof ExperimentCacheInvalidator ? $provider : null,
+        );
     },
 ];

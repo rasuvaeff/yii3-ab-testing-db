@@ -11,7 +11,7 @@ use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 /**
  * @api
  */
-final readonly class CachedExperimentProvider implements ExperimentProvider
+final readonly class CachedExperimentProvider implements ExperimentCacheInvalidator, ExperimentProvider
 {
     private const string CACHE_KEY_PREFIX = 'rasuvaeff.ab-testing.experiments.';
 
@@ -81,6 +81,12 @@ final readonly class CachedExperimentProvider implements ExperimentProvider
         } catch (\Throwable) {
             // Cache clear failure is non-fatal.
         }
+    }
+
+    #[\Override]
+    public function invalidate(): void
+    {
+        $this->clear();
     }
 
     /**

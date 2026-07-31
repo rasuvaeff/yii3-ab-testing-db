@@ -15,9 +15,11 @@ composer require rasuvaeff/yii3-ab-testing-db
 - Invalid row shape / malformed variants or recursively malformed targeting / invalid experiment (bad name, unknown fallback, zero total weight) throws `InvalidExperimentRowException` (never silently skips; raw TypeError/core errors do not leak).
 - `CachedExperimentProvider` validates the full `array<string, Experiment>` registry; poisoned arrays and cache failures fall back to inner. Its PSR-16 key is SHA-256 namespaced by DB table by default; pass `namespace` for tenant/connection isolation when sources share a table name.
 - Assignment hashing, fallback, forced/disabled logic — all remain in core.
-- Ships two `yiisoft/db-migration` migrations under `Rasuvaeff\Yii3AbTestingDb\Migration\` (namespaced since 2.0; register with `setSourceNamespaces()`).
-- Table name flows params (`table_prefix` + `table`) => `AbExperimentsTableName` (VO) => `DbExperimentProvider` AND both migrations. Configuring a migration through the container does NOT work: `Injector::make()` resolves by type, not by class-id.
+- Ships namespaced `yiisoft/db-migration` migrations under `Rasuvaeff\Yii3AbTestingDb\Migration\`; register with `setSourceNamespaces()`.
+- Table name flows params (`table_prefix` + `table`) => `AbExperimentsTableName` (VO) => provider, repository and every migration. Configuring a migration through the container does NOT work: `Injector::make()` resolves by type, not by class-id.
 - Binds `ExperimentProvider` in `config/di.php` (one source only — not the `AbTesting` facade).
+- Binds `ExperimentRepository`; mutations use optimistic revision checks and invalidate cache after commit.
+- Runtime DB experiments expose `configurationId` as `db:<revision>`.
 
 ## Database schema
 
@@ -30,7 +32,12 @@ CREATE TABLE ab_experiments (
     enabled          BOOLEAN      NOT NULL DEFAULT TRUE,
     salt             VARCHAR(190) NOT NULL DEFAULT '',
     fallback_variant VARCHAR(190) NOT NULL DEFAULT '',
-    variants         TEXT         NOT NULL DEFAULT '{}'
+    variants         TEXT         NOT NULL DEFAULT '{}',
+    targeting        TEXT         NULL,
+    state            VARCHAR(20)  NOT NULL DEFAULT 'running',
+    revision         INTEGER      NOT NULL DEFAULT 1,
+    created_at       VARCHAR(32)  NOT NULL,
+    updated_at       VARCHAR(32)  NOT NULL
 );
 ```
 
@@ -75,6 +82,29 @@ Thrown when a DB row is missing required columns, has wrong types, contains
 malformed `variants` JSON or a malformed recursive `targeting` tree, or yields an
 invalid experiment (bad name, unknown fallback variant, zero total weight,
 negative weight). Core validation errors are wrapped into this exception.
+
+### ExperimentRepository
+
+```php
+use Rasuvaeff\Yii3AbTesting\Experiment;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentState;
+
+$record = $repository->create(
+    new Experiment('checkout', false, 'checkout-v1', 'control', ['control' => 50, 'green' => 50]),
+    ExperimentState::Draft,
+);
+$record = $repository->enable('checkout', $record->revision);
+$record = $repository->reweight('checkout', ['control' => 10, 'green' => 90], $record->revision);
+$repository->archive('checkout', $record->revision);
+```
+
+Methods: `list`, `get`, `create`, `upsert`, `enable`, `disable`, `reweight`,
+`archive`. Every read and write returns an `ExperimentRecord` (`experiment`,
+`state`, `revision`, `createdAt`, `updatedAt`); pass `$record->revision` back as
+the expected revision. Stale writes throw `RevisionConflictException`; missing
+records throw `ExperimentNotFoundException`. Console commands: `ab-testing:validate`,
+`ab-testing:list`, `ab-testing:create`, `ab-testing:enable`,
+`ab-testing:disable`, `ab-testing:reweight`.
 
 ### Usage with AbTesting
 

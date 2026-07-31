@@ -4,6 +4,7 @@
 |---|---|---|
 | `basic-usage.php` | `DbExperimentProvider` reading experiments from SQLite | No |
 | `cached-usage.php` | `CachedExperimentProvider` with a PSR-16 cache | No |
+| `operational-control.php` | Create, enable and reweight with optimistic locking | No |
 | `yii-config.php` | Yii3 config-plugin wiring (params + di) | No |
 
 All scripts use `bootstrap.php`, which builds an in-memory SQLite connection with
@@ -17,5 +18,6 @@ used by the Yii3 wiring example.
 # From package root, after composer install
 docker run --rm -v "$PWD":/app -w /app composer:2 php examples/basic-usage.php
 docker run --rm -v "$PWD":/app -w /app composer:2 php examples/cached-usage.php
+docker run --rm -v "$PWD":/app -w /app composer:2 php examples/operational-control.php
 docker run --rm -v "$PWD":/app -w /app composer:2 php examples/yii-config.php
 ```

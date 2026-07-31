@@ -18,7 +18,7 @@ can be toggled and reweighted at runtime without a deploy.
 ## Requirements
 
 - PHP 8.3+
-- `rasuvaeff/yii3-ab-testing` ^1.0
+- `rasuvaeff/yii3-ab-testing` ^1.6
 - `yiisoft/db` ^2.0
 - `yiisoft/db-migration` ^2.0 (ships the table migration)
 - a PSR-16 cache implementation — required transitively by `yiisoft/db` 2.0
@@ -44,17 +44,26 @@ CREATE TABLE ab_experiments (
     enabled          BOOLEAN      NOT NULL DEFAULT TRUE,
     salt             VARCHAR(190) NOT NULL DEFAULT '',
     fallback_variant VARCHAR(190) NOT NULL DEFAULT '',
-    variants         TEXT         NOT NULL DEFAULT '{}'
+    variants         TEXT         NOT NULL DEFAULT '{}',
+    targeting        TEXT         NULL,
+    state            VARCHAR(20)  NOT NULL DEFAULT 'running',
+    revision         INTEGER      NOT NULL DEFAULT 1,
+    created_at       VARCHAR(32)  NOT NULL,
+    updated_at       VARCHAR(32)  NOT NULL
 );
 ```
 
 | Column | Type | Default | Description |
 |---|---|---|---|
-| `name` | `VARCHAR(190)` PK | — | Experiment name (core regex: `/^[a-z][a-z0-9_-]*$/`) |
+| `name` | `VARCHAR(190)` PK | — | Experiment name (core regex: `/^[a-z][a-z0-9_-]*\z/`) |
 | `enabled` | `BOOLEAN` | `true` | Disabled experiment returns the fallback variant |
 | `salt` | `VARCHAR(190)` | `''` | Empty string falls back to the experiment name |
 | `fallback_variant` | `VARCHAR(190)` | `''` | Must be one of the `variants` keys |
 | `variants` | `JSON`/`TEXT` | `'{}'` | JSON object `{"variant": weight}`, non-negative integer weights |
+| `targeting` | `JSON`/`TEXT` nullable | `null` | Targeting rule encoded by the shared core codec registry |
+| `state` | `VARCHAR(20)` | `running` | `draft`, `running`, `paused`, `completed` or `archived` |
+| `revision` | `INTEGER` | `1` | Optimistic-lock version; increments after every write |
+| `created_at`, `updated_at` | `VARCHAR(32)` | — | UTC operational timestamps |
 
 A row's `variants` looks like `{"control":50,"green":50}`. The total weight must
 be greater than zero and `fallback_variant` must match one of the keys, or the row
@@ -94,9 +103,17 @@ Set the table name in params — the same value reaches the migration **and**
 ],
 ```
 
-Both bundled migrations (`M260610000000CreateAbExperimentsTable` and
-`M260619000001AddTargetingToAbExperiments`) take the same table name, so the
+All bundled migrations take the same table name, so the
 `CREATE` and the later `ALTER` can no longer target different tables.
+
+> **Upgrading an existing installation.** The operational control plane
+> (`ExperimentRepository` and the console commands) needs the `state`,
+> `revision`, `created_at` and `updated_at` columns added by
+> `M260731000000AddOperationalFieldsToAbExperiments`. Run `./yii migrate:up`
+> before using them; `DbExperimentProvider` keeps reading a table that has not
+> been migrated yet. The migration is additive: existing rows get
+> `revision = 1`, epoch timestamps, and `state = paused` when `enabled` is
+> false, `running` otherwise. No assignment data changes.
 
 > **Do not configure the migration through the DI container.**
 > `M...::class => ['__construct()' => ['table' => ...]]` does not work: the
@@ -158,12 +175,70 @@ value is an `Experiment`; an invalid payload is replaced from the inner provider
 $cached->clear();               // removes cached experiments, next call reloads from DB
 ```
 
+### Operational repository
+
+The config-plugin also binds `ExperimentRepository`. Writes are transactional,
+increment `revision` atomically and invalidate the configured cache only after a
+successful commit:
+
+```php
+use Rasuvaeff\Yii3AbTesting\Experiment;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentState;
+
+/** @var ExperimentRepository $repository */
+$record = $repository->create(
+    experiment: new Experiment(
+        name: 'checkout-button',
+        enabled: false,
+        salt: 'checkout-v1',
+        fallbackVariant: 'control',
+        variants: ['control' => 50, 'green' => 50],
+    ),
+    state: ExperimentState::Draft,
+);
+
+$record = $repository->enable(
+    name: 'checkout-button',
+    expectedRevision: $record->revision,
+);
+$record = $repository->reweight(
+    name: 'checkout-button',
+    variants: ['control' => 10, 'green' => 90],
+    expectedRevision: $record->revision,
+);
+```
+
+A stale revision throws `RevisionConflictException`; a missing name throws
+`ExperimentNotFoundException`. `archive()` disables the experiment while
+preserving its name and revision history. Runtime experiments receive
+`configurationId = "db:<revision>"`, so exposure deduplication and sticky
+assignments do not mix different definitions.
+
+### Console control plane
+
+```bash
+./yii ab-testing:validate
+./yii ab-testing:list
+./yii ab-testing:create checkout-button '{"control":50,"green":50}' control --salt=checkout-v1
+./yii ab-testing:enable checkout-button 1
+./yii ab-testing:reweight checkout-button '{"control":10,"green":90}' 2
+./yii ab-testing:disable checkout-button 3
+```
+
+Revision arguments are mandatory on mutations to prevent one operator from
+silently overwriting another operator's change.
+
 ## API reference
 
 | Class | Description |
 |---|---|
 | `DbExperimentProvider` | Reads all experiments from DB in one `SELECT *` |
 | `CachedExperimentProvider` | PSR-16 decorator, caches the entire experiment set with TTL |
+| `ExperimentRepository` | Operational create/update/lifecycle contract |
+| `DbExperimentRepository` | Transactional DB implementation with optimistic locking |
+| `ExperimentRecord` | Runtime experiment plus state, revision and timestamps |
+| `ExperimentState` | Lifecycle enum: draft/running/paused/completed/archived |
 | `InvalidExperimentRowException` | Thrown when a DB row has invalid structure or yields an invalid experiment |
 
 ## Security
@@ -179,6 +254,8 @@ $cached->clear();               // removes cached experiments, next call reloads
 - **Reweighting shifts buckets.** Safe to flip `enabled` (kill switch). Changing
   weights or the variant set shifts bucket boundaries and reshuffles subjects — use
   `yii3-ab-testing-web` sticky assignment to pin subjects across such changes.
+- Repository commands use bound values and an identifier-validated table name.
+  Never construct write SQL from command arguments.
 
 ## Examples
 
@@ -191,6 +268,7 @@ composer build          # full gate: validate + normalize + cs + psalm + test
 composer cs:fix         # auto-fix code style
 composer psalm          # static analysis
 composer test           # run tests
+vendor/bin/testo --suite=Integration
 ```
 
 ## License

@@ -19,7 +19,7 @@
 ## Требования
 
 - PHP 8.3+
-- `rasuvaeff/yii3-ab-testing` ^1.0
+- `rasuvaeff/yii3-ab-testing` ^1.6
 - `yiisoft/db` ^2.0
 - `yiisoft/db-migration` ^2.0 (поставляет миграцию таблицы)
 - реализация PSR-16 cache — транзитивно требуется `yiisoft/db` 2.0
@@ -45,17 +45,26 @@ CREATE TABLE ab_experiments (
     enabled          BOOLEAN      NOT NULL DEFAULT TRUE,
     salt             VARCHAR(190) NOT NULL DEFAULT '',
     fallback_variant VARCHAR(190) NOT NULL DEFAULT '',
-    variants         TEXT         NOT NULL DEFAULT '{}'
+    variants         TEXT         NOT NULL DEFAULT '{}',
+    targeting        TEXT         NULL,
+    state            VARCHAR(20)  NOT NULL DEFAULT 'running',
+    revision         INTEGER      NOT NULL DEFAULT 1,
+    created_at       VARCHAR(32)  NOT NULL,
+    updated_at       VARCHAR(32)  NOT NULL
 );
 ```
 
 | Колонка | Тип | По умолчанию | Описание |
 |---|---|---|---|
-| `name` | `VARCHAR(190)` PK | — | Имя эксперимента (regex из ядра: `/^[a-z][a-z0-9_-]*$/`) |
+| `name` | `VARCHAR(190)` PK | — | Имя эксперимента (regex из ядра: `/^[a-z][a-z0-9_-]*\z/`) |
 | `enabled` | `BOOLEAN` | `true` | Отключённый эксперимент возвращает fallback-вариант |
 | `salt` | `VARCHAR(190)` | `''` | Пустая строка откатывается к имени эксперимента |
 | `fallback_variant` | `VARCHAR(190)` | `''` | Должен совпадать с одним из ключей в `variants` |
 | `variants` | `JSON`/`TEXT` | `'{}'` | JSON-объект `{"variant": weight}`, веса — неотрицательные целые |
+| `targeting` | nullable `JSON`/`TEXT` | `null` | Targeting rule в формате общего core codec registry |
+| `state` | `VARCHAR(20)` | `running` | `draft`, `running`, `paused`, `completed` или `archived` |
+| `revision` | `INTEGER` | `1` | Версия optimistic locking; растёт после каждой записи |
+| `created_at`, `updated_at` | `VARCHAR(32)` | — | Operational timestamps в UTC |
 
 Поле `variants` в строке выглядит как `{"control":50,"green":50}`. Сумма весов
 должна быть больше нуля, а `fallback_variant` обязан совпадать с одним из ключей
@@ -95,10 +104,17 @@ return [
 ],
 ```
 
-Обе поставляемые миграции (`M260610000000CreateAbExperimentsTable` и
-`M260619000001AddTargetingToAbExperiments`) получают одно и то же имя таблицы,
-поэтому `CREATE` и последующий `ALTER` больше не могут разойтись по разным
-таблицам.
+Все поставляемые миграции получают одно и то же имя таблицы, поэтому `CREATE` и
+последующий `ALTER` больше не могут разойтись по разным таблицам.
+
+> **Обновление существующей установки.** Operational control plane
+> (`ExperimentRepository` и console-команды) требует колонок `state`,
+> `revision`, `created_at` и `updated_at`, которые добавляет
+> `M260731000000AddOperationalFieldsToAbExperiments`. Выполните
+> `./yii migrate:up` перед их использованием; `DbExperimentProvider` продолжает
+> читать ещё не мигрированную таблицу. Миграция аддитивная: существующие строки
+> получают `revision = 1`, epoch-таймстемпы и `state = paused` при `enabled`
+> false, иначе `running`. Данные назначения не меняются.
 
 > **Не настраивайте миграцию через DI-контейнер.**
 > `M...::class => ['__construct()' => ['table' => ...]]` не работает: миграцию
@@ -162,12 +178,70 @@ inner provider.
 $cached->clear();               // removes cached experiments, next call reloads from DB
 ```
 
+### Operational repository
+
+Config-plugin также биндит `ExperimentRepository`. Записи транзакционны,
+атомарно увеличивают `revision` и инвалидируют настроенный кэш только после
+успешного commit:
+
+```php
+use Rasuvaeff\Yii3AbTesting\Experiment;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentState;
+
+/** @var ExperimentRepository $repository */
+$record = $repository->create(
+    experiment: new Experiment(
+        name: 'checkout-button',
+        enabled: false,
+        salt: 'checkout-v1',
+        fallbackVariant: 'control',
+        variants: ['control' => 50, 'green' => 50],
+    ),
+    state: ExperimentState::Draft,
+);
+
+$record = $repository->enable(
+    name: 'checkout-button',
+    expectedRevision: $record->revision,
+);
+$record = $repository->reweight(
+    name: 'checkout-button',
+    variants: ['control' => 10, 'green' => 90],
+    expectedRevision: $record->revision,
+);
+```
+
+Устаревшая revision даёт `RevisionConflictException`, отсутствующее имя —
+`ExperimentNotFoundException`. `archive()` выключает эксперимент, но сохраняет
+его имя и историю revisions. Runtime-эксперимент получает
+`configurationId = "db:<revision>"`, поэтому exposure deduplication и sticky
+assignments не смешивают разные определения.
+
+### Консольное управление
+
+```bash
+./yii ab-testing:validate
+./yii ab-testing:list
+./yii ab-testing:create checkout-button '{"control":50,"green":50}' control --salt=checkout-v1
+./yii ab-testing:enable checkout-button 1
+./yii ab-testing:reweight checkout-button '{"control":10,"green":90}' 2
+./yii ab-testing:disable checkout-button 3
+```
+
+Revision обязательна для мутирующих команд, чтобы один оператор не мог незаметно
+перезаписать изменение другого.
+
 ## API reference
 
 | Класс | Описание |
 |---|---|
 | `DbExperimentProvider` | Читает все эксперименты из БД одним `SELECT *` |
 | `CachedExperimentProvider` | PSR-16 декоратор, кэширует весь набор экспериментов с TTL |
+| `ExperimentRepository` | Контракт создания, изменения и lifecycle экспериментов |
+| `DbExperimentRepository` | Транзакционная DB-реализация с optimistic locking |
+| `ExperimentRecord` | Runtime experiment вместе со state, revision и timestamps |
+| `ExperimentState` | Lifecycle enum: draft/running/paused/completed/archived |
 | `InvalidExperimentRowException` | Бросается, когда строка БД имеет невалидную структуру или порождает невалидный эксперимент |
 
 ## Безопасность
@@ -186,6 +260,8 @@ $cached->clear();               // removes cached experiments, next call reloads
   (kill switch). Изменение весов или набора вариантов сдвигает границы
   бакетов и перетасовывает субъектов — используйте sticky-назначение из
   `yii3-ab-testing-web`, чтобы зафиксировать субъектов при таких изменениях.
+- Repository-команды используют bound values и проверенное имя таблицы. Никогда
+  не собирайте write SQL из аргументов команды.
 
 ## Примеры
 
@@ -198,6 +274,7 @@ composer build          # full gate: validate + normalize + cs + psalm + test
 composer cs:fix         # auto-fix code style
 composer psalm          # static analysis
 composer test           # run tests
+vendor/bin/testo --suite=Integration
 ```
 
 ## Лицензия

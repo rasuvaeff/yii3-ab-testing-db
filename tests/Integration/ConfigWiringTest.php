@@ -10,9 +10,11 @@ use Rasuvaeff\Yii3AbTesting\AssignmentStrategy;
 use Rasuvaeff\Yii3AbTesting\ConversionTracker;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTesting\ExposureTracker;
+use Rasuvaeff\Yii3AbTesting\TargetingRuleCodecRegistry;
 use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentRepository;
 use Testo\Assert;
 use Testo\Codecov\CoversNothing;
 use Testo\Test;
@@ -70,14 +72,36 @@ final class ConfigWiringTest
         Assert::instanceOf($provider, CachedExperimentProvider::class);
     }
 
-    public function packageBindsOnlyTheExperimentProviderKey(): void
+    public function bindsOperationalRepository(): void
+    {
+        $definitions = $this->loadDb([]);
+        $repositoryFactory = $definitions[ExperimentRepository::class];
+        $providerFactory = $definitions[ExperimentProvider::class];
+        $tableFactory = $definitions[AbExperimentsTableName::class];
+        $db = $this->sqlite();
+        $container = new SimpleContainer([CacheInterface::class => new MemorySimpleCache()]);
+        $codecs = new TargetingRuleCodecRegistry();
+        $table = $tableFactory();
+        $provider = $providerFactory($db, $container, $table, $codecs);
+
+        Assert::instanceOf(
+            $repositoryFactory($db, $table, $codecs, $provider),
+            ExperimentRepository::class,
+        );
+    }
+
+    public function packageBindsOnlyItsProviderRepositoryAndTableKeys(): void
     {
         $definitions = $this->loadDb([]);
 
         // AbExperimentsTableName is this package's own type; the core binds
         // neither it nor ExperimentProvider, so there is nothing for
         // yiisoft/config to call a duplicate
-        Assert::same(array_keys($definitions), [AbExperimentsTableName::class, ExperimentProvider::class]);
+        Assert::same(array_keys($definitions), [
+            AbExperimentsTableName::class,
+            ExperimentProvider::class,
+            ExperimentRepository::class,
+        ]);
     }
 
     public function coreBindsFacadeAndStrategyButNotSwappableKeys(): void
@@ -108,7 +132,12 @@ final class ConfigWiringTest
         $tableFactory = $definitions[AbExperimentsTableName::class];
         Assert::true(is_callable($tableFactory));
 
-        $provider = $factory($this->sqlite(), $container, $tableFactory());
+        $provider = $factory(
+            $this->sqlite(),
+            $container,
+            $tableFactory(),
+            new TargetingRuleCodecRegistry(),
+        );
         Assert::instanceOf($provider, ExperimentProvider::class);
 
         return $provider;
