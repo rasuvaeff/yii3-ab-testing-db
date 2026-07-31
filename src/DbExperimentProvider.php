@@ -6,6 +6,7 @@ namespace Rasuvaeff\Yii3AbTestingDb;
 
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
+use Rasuvaeff\Yii3AbTesting\TargetingRuleCodecRegistry;
 use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Query\Query;
 
@@ -24,6 +25,7 @@ final readonly class DbExperimentProvider implements CacheNamespaceProvider, Exp
     public function __construct(
         private ConnectionInterface $db,
         string $table = 'ab_experiments',
+        private TargetingRuleCodecRegistry $targetingCodecs = new TargetingRuleCodecRegistry(),
     ) {
         // validation lives in the value object, so the provider and the bundled
         // migrations cannot disagree about what a valid table name is
@@ -40,7 +42,7 @@ final readonly class DbExperimentProvider implements CacheNamespaceProvider, Exp
             ->from($this->table)
             ->all();
 
-        $mapper = new ExperimentRowMapper();
+        $mapper = new ExperimentRowMapper(targetingCodecs: $this->targetingCodecs);
         $experiments = [];
 
         foreach ($rows as $row) {

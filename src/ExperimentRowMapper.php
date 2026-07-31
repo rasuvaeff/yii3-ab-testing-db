@@ -4,22 +4,23 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb;
 
-use Rasuvaeff\Yii3AbTesting\AndTargetingRule;
-use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
-use Rasuvaeff\Yii3AbTesting\EnvironmentTargetingRule;
 use Rasuvaeff\Yii3AbTesting\Exception\InvalidExperimentException;
 use Rasuvaeff\Yii3AbTesting\Exception\InvalidVariantException;
 use Rasuvaeff\Yii3AbTesting\Experiment;
-use Rasuvaeff\Yii3AbTesting\OrTargetingRule;
 use Rasuvaeff\Yii3AbTesting\TargetingRule;
+use Rasuvaeff\Yii3AbTesting\TargetingRuleCodecRegistry;
 
 /**
  * Maps a raw database row into a validated {@see Experiment}.
  *
  * @internal
  */
-final class ExperimentRowMapper
+final readonly class ExperimentRowMapper
 {
+    public function __construct(
+        private TargetingRuleCodecRegistry $targetingCodecs = new TargetingRuleCodecRegistry(),
+    ) {}
+
     /**
      * @param array<array-key, mixed> $row
      */
@@ -36,10 +37,34 @@ final class ExperimentRowMapper
                 fallbackVariant: $this->extractString(row: $row, column: 'fallback_variant'),
                 variants: $this->extractVariants(row: $row),
                 targeting: $this->extractTargeting(row: $row),
+                configurationId: $this->extractConfigurationId(row: $row),
             );
         } catch (InvalidExperimentException|InvalidVariantException $e) {
             throw new Exception\InvalidExperimentRowException(message: sprintf('Invalid experiment "%s" in DB row: %s', $name, $e->getMessage()), code: $e->getCode(), previous: $e);
         }
+    }
+
+    /**
+     * @param array<array-key, mixed> $row
+     */
+    public function mapRecord(array $row): ExperimentRecord
+    {
+        $revision = $this->extractPositiveInt(row: $row, column: 'revision');
+
+        return new ExperimentRecord(
+            experiment: $this->map($row),
+            state: $this->extractState($row),
+            revision: $revision,
+            createdAt: $this->extractDateTime(row: $row, column: 'created_at'),
+            updatedAt: $this->extractDateTime(row: $row, column: 'updated_at'),
+        );
+    }
+
+    public function encodeTargeting(?TargetingRule $targeting): ?string
+    {
+        return $targeting instanceof TargetingRule
+            ? json_encode($this->targetingCodecs->encode($targeting), JSON_THROW_ON_ERROR)
+            : null;
     }
 
     /**
@@ -163,103 +188,72 @@ final class ExperimentRowMapper
         }
 
         try {
-            return $this->buildRule(
-                data: json_decode(json: $row['targeting'], associative: true, flags: JSON_THROW_ON_ERROR),
+            return $this->targetingCodecs->decode(
+                json_decode(json: $row['targeting'], associative: true, flags: JSON_THROW_ON_ERROR),
             );
         } catch (\JsonException) {
             throw new Exception\InvalidExperimentRowException(
                 message: sprintf('Invalid "targeting" JSON: %s', $row['targeting']),
             );
+        } catch (\InvalidArgumentException $e) {
+            throw new Exception\InvalidExperimentRowException(
+                message: $e->getMessage(),
+                code: $e->getCode(),
+                previous: $e,
+            );
         }
     }
 
-    private function buildRule(mixed $data): TargetingRule
+    /** @param array<array-key, mixed> $row */
+    private function extractConfigurationId(array $row): ?string
     {
-        if (!\is_array($data) || array_is_list($data)) {
+        return array_key_exists('revision', $row)
+            ? 'db:' . $this->extractPositiveInt(row: $row, column: 'revision')
+            : null;
+    }
+
+    /** @param array<array-key, mixed> $row */
+    private function extractPositiveInt(array $row, string $column): int
+    {
+        $value = $row[$column] ?? null;
+
+        if (\is_string($value) && preg_match('/^\d+\z/', $value) === 1) {
+            $value = (int) $value;
+        }
+
+        if (!\is_int($value) || $value < 1) {
             throw new Exception\InvalidExperimentRowException(
-                message: sprintf(
-                    'Invalid targeting rule: expected object, got %s',
-                    get_debug_type($data),
-                ),
+                message: sprintf('Missing or invalid column "%s" in experiment row', $column),
             );
         }
 
-        $type = isset($data['type']) && \is_string($data['type']) ? $data['type'] : null;
+        return $value;
+    }
 
-        if ($type === 'environment') {
-            if (!isset($data['values'])
-                || !\is_array($data['values'])
-                || !array_is_list($data['values'])
-                || $data['values'] === []) {
-                throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid "environment" targeting rule: "values" must be a non-empty list of strings',
-                );
-            }
+    /** @param array<array-key, mixed> $row */
+    private function extractState(array $row): ExperimentState
+    {
+        $value = $this->extractString(row: $row, column: 'state');
 
-            $environments = [];
+        return ExperimentState::tryFrom($value)
+            ?? throw new Exception\InvalidExperimentRowException(
+                message: sprintf('Invalid experiment state "%s"', $value),
+            );
+    }
 
-            foreach ($data['values'] as $environment) {
-                if (!\is_string($environment)) {
-                    throw new Exception\InvalidExperimentRowException(
-                        message: 'Invalid "environment" targeting rule: "values" must be a non-empty list of strings',
-                    );
-                }
+    /** @param array<array-key, mixed> $row */
+    private function extractDateTime(array $row, string $column): \DateTimeImmutable
+    {
+        $value = $this->extractString(row: $row, column: $column);
 
-                $environments[] = $environment;
-            }
-
-            return new EnvironmentTargetingRule(environments: $environments);
-        }
-
-        if ($type === 'attribute') {
-            $value = $data['value'] ?? null;
-
-            if (!\is_string($value) && !\is_int($value) && !\is_float($value) && !\is_bool($value)) {
-                throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid targeting attribute value type',
-                );
-            }
-
-            if (!isset($data['attribute']) || !\is_string($data['attribute'])) {
-                throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid "attribute" targeting rule: "attribute" must be a string',
-                );
-            }
-
-            return new AttributeTargetingRule(
-                attribute: $data['attribute'],
-                value: $value,
+        try {
+            return new \DateTimeImmutable($value, new \DateTimeZone('UTC'));
+        } catch (\Exception $e) {
+            throw new Exception\InvalidExperimentRowException(
+                message: sprintf('Invalid datetime column "%s" in experiment row', $column),
+                code: (int) $e->getCode(),
+                previous: $e,
             );
         }
-
-        if ($type === 'and') {
-            if (!isset($data['rules'])
-                || !\is_array($data['rules'])
-                || !array_is_list($data['rules'])
-                || $data['rules'] === []) {
-                throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid "and" targeting rule: "rules" must be a non-empty list',
-                );
-            }
-
-            return new AndTargetingRule(rules: array_map($this->buildRule(...), $data['rules']));
-        }
-
-        if ($type === 'or') {
-            if (!isset($data['rules'])
-                || !\is_array($data['rules'])
-                || !array_is_list($data['rules'])
-                || $data['rules'] === []) {
-                throw new Exception\InvalidExperimentRowException(
-                    message: 'Invalid "or" targeting rule: "rules" must be a non-empty list',
-                );
-            }
-
-            return new OrTargetingRule(rules: array_map($this->buildRule(...), $data['rules']));
-        }
-
-        throw new Exception\InvalidExperimentRowException(
-            message: sprintf('Unknown targeting rule type: "%s"', $type ?? '(null)'),
-        );
     }
 }

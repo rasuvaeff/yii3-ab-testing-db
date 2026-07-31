@@ -7,6 +7,8 @@ namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
 use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260610000000CreateAbExperimentsTable;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260619000001AddTargetingToAbExperiments;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260731000000AddOperationalFieldsToAbExperiments;
 use Testo\Assert;
 use Testo\Codecov\CoversNothing;
 use Testo\Lifecycle\AfterTest;
@@ -87,5 +89,28 @@ final class MigrationTest
         Assert::array($experiments)->hasKeys('checkout-button');
         Assert::same($experiments['checkout-button']->fallbackVariant, 'control');
         Assert::same($experiments['checkout-button']->variants, ['control' => 50, 'green' => 50]);
+    }
+
+    public function addsOperationalFieldsAndBackfillsDisabledState(): void
+    {
+        (new M260610000000CreateAbExperimentsTable())->up($this->builder);
+        (new M260619000001AddTargetingToAbExperiments())->up($this->builder);
+        $this->db->createCommand(
+            sql: "INSERT INTO ab_experiments (name, enabled, salt, fallback_variant, variants)
+                  VALUES ('paused-exp', 0, 'v1', 'control', '{\"control\":100}')",
+        )->execute();
+
+        (new M260731000000AddOperationalFieldsToAbExperiments())->up($this->builder);
+
+        $schema = $this->db->getTableSchema('ab_experiments', true);
+        Assert::notNull($schema);
+        Assert::notNull($schema->getColumn('state'));
+        Assert::notNull($schema->getColumn('revision'));
+        Assert::notNull($schema->getColumn('created_at'));
+        Assert::notNull($schema->getColumn('updated_at'));
+
+        $row = $this->db->createCommand("SELECT state, revision FROM ab_experiments WHERE name = 'paused-exp'")->queryOne();
+        Assert::same($row['state'], 'paused');
+        Assert::same((int) $row['revision'], 1);
     }
 }

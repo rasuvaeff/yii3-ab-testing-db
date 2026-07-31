@@ -8,12 +8,13 @@ Database-backed experiment provider for Yii3 A/B testing. Implements
 `ExperimentProvider` from `rasuvaeff/yii3-ab-testing` core. Reads all experiments
 from a DB table in one query via the yiisoft/db `Query` builder (`SELECT *`), and
 maps each row to an `Experiment` through the `@internal ExperimentRowMapper`.
-Also provides `CachedExperimentProvider` — a PSR-16 decorator with TTL-based
-caching. A migration for `yiisoft/db-migration` ships in `migrations/`.
+Also provides `CachedExperimentProvider` and an operational
+`ExperimentRepository` with optimistic locking and lifecycle transitions.
 Namespace: `Rasuvaeff\Yii3AbTestingDb`.
 
 Public API: `DbExperimentProvider`, `CachedExperimentProvider`,
-`Exception\InvalidExperimentRowException`. `ExperimentRowMapper` is `@internal`
+`ExperimentRepository`, `DbExperimentRepository`, `ExperimentRecord`,
+`ExperimentState`, and repository exceptions. `ExperimentRowMapper` is `@internal`
 (row → `Experiment` mapping, unit-tested directly).
 
 DI: `config/di.php` binds `ExperimentProvider` (the experiment **source**), NOT
@@ -65,6 +66,11 @@ bootstrap `pcov` inside the `composer:2` container.
 
 - DB adapter is only a configuration source — assignment hashing, fallback,
   forced/disabled handling all remain in core.
+- Every repository update is conditional on the caller's expected revision.
+  Increment revision and invalidate cache only after a successful transaction;
+  archive instead of deleting historical experiment identities.
+- DB revision projects to core `configurationId` as `db:<revision>`. Do not use
+  the integer DB revision as a cross-provider configuration identity.
 - `getExperiments()` returns the entire set eagerly; one query
   (`Query->from()->all()`) per call. Without `CachedExperimentProvider` that is a
   DB hit per registry build (per request). Enable caching in production.
@@ -79,7 +85,7 @@ bootstrap `pcov` inside the `composer:2` container.
   or type and never reads a container definition keyed by the migration's class,
   so a scalar `string $table` could not be configured at all. Never reintroduce
   one.
-- **Both migrations take the SAME value object.** They used to hard-code their
+- **All migrations take the SAME value object.** They used to hard-code their
   own defaults independently, so a configured table got CREATEd under the custom
   name while the ALTER went to `ab_experiments`.
 - Migrations are covered by cs, psalm and infection like any other source file;

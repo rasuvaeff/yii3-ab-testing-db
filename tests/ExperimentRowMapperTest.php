@@ -336,7 +336,7 @@ final class ExperimentRowMapperTest
             $this->mapper->map($this->row() + ['targeting' => '{"type":42}']);
             Assert::fail('Expected InvalidExperimentRowException');
         } catch (InvalidExperimentRowException $e) {
-            Assert::true(preg_match('/"\(null\)"/', $e->getMessage()) === 1);
+            Assert::string($e->getMessage())->contains('"type" must be a non-empty string');
         }
     }
 

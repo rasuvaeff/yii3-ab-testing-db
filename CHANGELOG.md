@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Add `ExperimentRepository` / `DbExperimentRepository` with create, upsert,
+  enable, disable, reweight and archive operations.
+- Add optimistic locking, lifecycle state and timestamps through the additive
+  `M260731000000AddOperationalFieldsToAbExperiments` migration.
+- Project DB revisions into core's string `configurationId` as `db:<revision>`
+  and use the shared extensible targeting codec registry for reads and writes.
+- Register `ab-testing:validate`, `list`, `create`, `enable`, `disable` and
+  `reweight` console commands.
+- Invalidate the configured experiment cache only after successful writes.
+- Run the integration suite against MySQL and PostgreSQL as well as SQLite. The
+  new PDO driver dev dependencies are pinned in `config.platform` so the
+  Docker-image build gate still installs without those extensions.
+
 ## 2.0.1 — 2026-07-29
 
 - Recursively validate targeting JSON, including non-empty `and`/`or` lists and
