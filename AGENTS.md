@@ -13,8 +13,10 @@ Also provides `CachedExperimentProvider` and an operational
 Namespace: `Rasuvaeff\Yii3AbTestingDb`.
 
 Public API: `DbExperimentProvider`, `CachedExperimentProvider`,
-`ExperimentRepository`, `DbExperimentRepository`, `ExperimentRecord`,
-`ExperimentState`, and repository exceptions. `ExperimentRowMapper` is `@internal`
+`LastKnownGoodExperimentProvider`, `ExperimentRepository`,
+`DbExperimentRepository`, `ExperimentRecord`, `ExperimentState`,
+`ExperimentSchedule`, `DbAssignmentStore`, `AbAssignmentsTableName`,
+`AbExperimentsTableName`, and repository exceptions. `ExperimentRowMapper` is `@internal`
 (row → `Experiment` mapping, unit-tested directly).
 
 DI: `config/di.php` binds `ExperimentProvider` (the experiment **source**), NOT
@@ -69,8 +71,26 @@ bootstrap `pcov` inside the `composer:2` container.
 - Every repository update is conditional on the caller's expected revision.
   Increment revision and invalidate cache only after a successful transaction;
   archive instead of deleting historical experiment identities.
-- DB revision projects to core `configurationId` as `db:<revision>`. Do not use
-  the integer DB revision as a cross-provider configuration identity.
+- DB revision projects to core `configurationId` as `db:<revision>`, and since
+  3.0 it is **required**: a row without a `revision` column throws. Without it
+  an experiment has no configuration identity, so a sticky store cannot tell a
+  reweight from the original definition and keeps serving a stale variant, and
+  exposure deduplication loses its key. Do not use the integer DB revision as a
+  cross-provider configuration identity.
+- `DbAssignmentStore` implements core's `ConfigurationAwareAssignmentStore` —
+  the interface lives in the core precisely so this package does not have to
+  depend on `yii3-ab-testing-web`. Its write is an `upsert()`, which compiles to
+  different SQL per driver, so schema changes there must be re-verified against
+  MySQL and PostgreSQL, not only SQLite (`CrossDatabaseRepositoryTest`).
+- `subject_id` in `ab_assignments` is personal data when it is a user id.
+  `forget()` and `deleteExperiment()` exist for erasure and cleanup; neither is
+  automatic, because dropping analytics-relevant history is the operator's call.
+- `ExperimentSchedule` is planning data and deliberately outside the runtime
+  projection. Answering `isActiveAt()` during assignment would make the served
+  variant depend on wall-clock time, which the deterministic hash never intends.
+- `LastKnownGoodExperimentProvider` is opt-in and must never be silent: every
+  fallback logs at `error`, and the first read rethrows rather than serving an
+  empty set that would look like "no experiments configured".
 - `getExperiments()` returns the entire set eagerly; one query
   (`Query->from()->all()`) per call. Without `CachedExperimentProvider` that is a
   DB hit per registry build (per request). Enable caching in production.
@@ -85,6 +105,16 @@ bootstrap `pcov` inside the `composer:2` container.
   or type and never reads a container definition keyed by the migration's class,
   so a scalar `string $table` could not be configured at all. Never reintroduce
   one.
+- **Never edit a migration that has been released.** `yiisoft/db-migration`
+  records applied files, and the ClickHouse runner in the sibling package
+  records a checksum; editing one after publication makes an installation that
+  already applied it diverge from one that has not, with no error to notice.
+  Change it with a NEW migration instead. This is why `M260731000000` still
+  carries an epoch `DEFAULT` on its timestamp columns: the columns were added
+  to a populated table, `NOT NULL` demanded a default, and the migration
+  immediately `update()`s the real values. New tables must NOT copy that
+  default — an INSERT that forgets a timestamp should fail rather than silently
+  record 1970 (see `M260801000000`).
 - **All migrations take the SAME value object.** They used to hard-code their
   own defaults independently, so a configured table got CREATEd under the custom
   name while the ALTER went to `ab_experiments`.

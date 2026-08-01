@@ -57,6 +57,7 @@ final readonly class ExperimentRowMapper
             revision: $revision,
             createdAt: $this->extractDateTime(row: $row, column: 'created_at'),
             updatedAt: $this->extractDateTime(row: $row, column: 'updated_at'),
+            schedule: $this->extractSchedule($row),
         );
     }
 
@@ -204,12 +205,52 @@ final readonly class ExperimentRowMapper
         }
     }
 
-    /** @param array<array-key, mixed> $row */
-    private function extractConfigurationId(array $row): ?string
+    /**
+     * Absent columns mean the schedule migration has not been applied yet, and
+     * an unscheduled experiment is a legitimate state anyway — so this is the
+     * one place a missing column is not an error.
+     *
+     * @param array<array-key, mixed> $row
+     */
+    private function extractSchedule(array $row): ExperimentSchedule
     {
-        return array_key_exists('revision', $row)
-            ? 'db:' . $this->extractPositiveInt(row: $row, column: 'revision')
-            : null;
+        return new ExperimentSchedule(
+            startsAt: $this->extractNullableDateTime(row: $row, column: 'starts_at'),
+            endsAt: $this->extractNullableDateTime(row: $row, column: 'ends_at'),
+        );
+    }
+
+    /** @param array<array-key, mixed> $row */
+    private function extractNullableDateTime(array $row, string $column): ?\DateTimeImmutable
+    {
+        if (!isset($row[$column]) || $row[$column] === '') {
+            return null;
+        }
+
+        return $this->extractDateTime(row: $row, column: $column);
+    }
+
+    /**
+     * The revision is required, not optional.
+     *
+     * Without it an experiment has no configuration identity, and everything
+     * built on that identity degrades silently rather than failing: a sticky
+     * store cannot tell a reweight from the original definition and keeps
+     * serving a stale variant, and exposure deduplication loses its key. A
+     * missing column means the 2.x migration was never applied, which is worth
+     * an error rather than a quietly weaker guarantee.
+     *
+     * @param array<array-key, mixed> $row
+     */
+    private function extractConfigurationId(array $row): string
+    {
+        if (!array_key_exists('revision', $row)) {
+            throw new Exception\InvalidExperimentRowException(
+                message: 'Experiment row has no "revision" column: apply the package migrations before reading experiments',
+            );
+        }
+
+        return 'db:' . $this->extractPositiveInt(row: $row, column: 'revision');
     }
 
     /** @param array<array-key, mixed> $row */
