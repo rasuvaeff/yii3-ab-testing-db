@@ -14,6 +14,9 @@ experiment configuration from a database table in a single query, so experiments
 can be toggled and reweighted at runtime without a deploy.
 
 > Using an AI coding assistant? [llms.txt](llms.txt) contains a compact API reference you can ingest in your prompt context.
+> Projects using the [llm/skills](https://github.com/roxblnfk/skills) Composer
+> plugin also get this package's agent skill synced into `.agents/skills/`
+> automatically on install.
 
 ## Requirements
 
