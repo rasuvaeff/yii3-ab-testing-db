@@ -18,6 +18,9 @@ can be toggled and reweighted at runtime without a deploy.
 > plugin also get this package's agent skill synced into `.agents/skills/`
 > automatically on install.
 
+> Assembling a combination? The family's integration matrix lives in the core:
+> `vendor/rasuvaeff/yii3-ab-testing/docs/integration.md`.
+
 ## Requirements
 
 - PHP 8.3+
