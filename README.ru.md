@@ -37,6 +37,8 @@
 composer require rasuvaeff/yii3-ab-testing-db
 ```
 
+Обновляетесь с 2.x? См. [UPGRADE.md](UPGRADE.md).
+
 С config-plugin из Yii3 пакет автоматически биндит `ExperimentProvider` — **не**
 биндите `ExperimentProvider` в приложении или другом backend'е одновременно,
 иначе `yiisoft/config` сообщит об ошибке `Duplicate key`.

@@ -36,6 +36,8 @@ can be toggled and reweighted at runtime without a deploy.
 composer require rasuvaeff/yii3-ab-testing-db
 ```
 
+Upgrading from 2.x? See [UPGRADE.md](UPGRADE.md).
+
 With Yii3 config-plugin this package binds `ExperimentProvider` automatically — do
 **not** also bind `ExperimentProvider` in your application or another backend, or
 `yiisoft/config` reports a `Duplicate key` error.
