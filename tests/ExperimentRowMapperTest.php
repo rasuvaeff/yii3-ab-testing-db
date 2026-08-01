@@ -14,6 +14,7 @@ use Rasuvaeff\Yii3AbTestingDb\ExperimentRowMapper;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Data\DataProvider;
+use Testo\Expect;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
 
@@ -37,6 +38,7 @@ final class ExperimentRowMapperTest
             'salt' => 'checkout-v1',
             'fallback_variant' => 'control',
             'variants' => ['control' => 50, 'green' => 50],
+            'revision' => 1,
         ]);
 
         Assert::same($experiment->name, 'checkout-button');
@@ -54,6 +56,7 @@ final class ExperimentRowMapperTest
             'salt' => 'exp-a-salt',
             'fallback_variant' => 'control',
             'variants' => '{"control":75,"green":25}',
+            'revision' => 1,
         ]);
 
         Assert::true($experiment->enabled);
@@ -146,6 +149,7 @@ final class ExperimentRowMapperTest
             'salt' => 'exp-salt',
             'fallback_variant' => 'control',
             'variants' => '{"control":50,"green":50}',
+            'revision' => 1,
         ];
 
         yield 'missing name' => [self::without($base, 'name'), 'name'];
@@ -528,12 +532,72 @@ final class ExperimentRowMapperTest
      *
      * @return array<string, mixed>
      */
+    /**
+     * Not a cosmetic requirement: without a revision the experiment has no
+     * configuration identity, so a sticky store cannot tell a reweight from
+     * the original definition and keeps serving a stale variant. Failing loudly
+     * beats a quietly weaker guarantee.
+     */
+    public function rejectsARowWithoutARevision(): void
+    {
+        Expect::exception(InvalidExperimentRowException::class)
+            ->withMessage('Experiment row has no "revision" column: apply the package migrations before reading experiments');
+
+        (new ExperimentRowMapper())->map(self::without($this->row(), 'revision'));
+    }
+
+    public function readsTheScheduleWindowFromTheRow(): void
+    {
+        $record = (new ExperimentRowMapper())->mapRecord($this->row() + [
+            'state' => 'running',
+            'created_at' => '2026-08-01 10:00:00.000000',
+            'updated_at' => '2026-08-01 10:00:00.000000',
+            'starts_at' => '2026-08-05 00:00:00.000000',
+            'ends_at' => '2026-08-12 00:00:00.000000',
+        ]);
+
+        Assert::same($record->schedule->startsAt?->format('Y-m-d'), '2026-08-05');
+        Assert::same($record->schedule->endsAt?->format('Y-m-d'), '2026-08-12');
+    }
+
+    /**
+     * Unlike the revision, an absent window is legitimate: it means the
+     * experiment is unscheduled, which is the state every experiment was in
+     * before the columns existed.
+     */
+    public function anAbsentScheduleWindowIsOpen(): void
+    {
+        $record = (new ExperimentRowMapper())->mapRecord($this->row() + [
+            'state' => 'running',
+            'created_at' => '2026-08-01 10:00:00.000000',
+            'updated_at' => '2026-08-01 10:00:00.000000',
+        ]);
+
+        Assert::null($record->schedule->startsAt);
+        Assert::null($record->schedule->endsAt);
+    }
+
+    public function anEmptyScheduleColumnIsTreatedAsAbsent(): void
+    {
+        $record = (new ExperimentRowMapper())->mapRecord($this->row() + [
+            'state' => 'running',
+            'created_at' => '2026-08-01 10:00:00.000000',
+            'updated_at' => '2026-08-01 10:00:00.000000',
+            'starts_at' => '',
+            'ends_at' => null,
+        ]);
+
+        Assert::null($record->schedule->startsAt);
+        Assert::null($record->schedule->endsAt);
+    }
+
     private function row(
         string $name = 'exp',
         bool|int|string $enabled = true,
         string $salt = 'exp-salt',
         string $fallbackVariant = 'control',
         array|string $variants = '{"control":50,"green":50}',
+        int|string $revision = 1,
     ): array {
         return [
             'name' => $name,
@@ -541,6 +605,10 @@ final class ExperimentRowMapperTest
             'salt' => $salt,
             'fallback_variant' => $fallbackVariant,
             'variants' => $variants,
+            // required since 3.0: an experiment without a revision has no
+            // configuration identity, so sticky stores and exposure dedup lose
+            // their key
+            'revision' => $revision,
         ];
     }
 

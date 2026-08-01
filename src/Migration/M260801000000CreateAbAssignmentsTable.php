@@ -35,8 +35,15 @@ final readonly class M260801000000CreateAbAssignmentsTable implements Revertible
             // '' means "configuration unknown"; NULL would make the equality
             // check in the store driver-dependent.
             'configuration_id' => "string(191) NOT NULL DEFAULT ''",
-            'created_at' => "string(32) NOT NULL DEFAULT '1970-01-01 00:00:00.000000'",
-            'updated_at' => "string(32) NOT NULL DEFAULT '1970-01-01 00:00:00.000000'",
+            // No default on purpose. The epoch default in the experiments
+            // table exists only because those columns were added to a populated
+            // table and NOT NULL demanded one; here the table is new, so an
+            // INSERT that forgets a timestamp should fail rather than silently
+            // record 1970. Stored as a string for the same reason as elsewhere
+            // in this package: 'Y-m-d H:i:s.u' sorts chronologically on all
+            // three drivers without their differing datetime semantics.
+            'created_at' => 'string(32) NOT NULL',
+            'updated_at' => 'string(32) NOT NULL',
         ]);
 
         // A unique index rather than a composite PRIMARY KEY: SQLite cannot add
