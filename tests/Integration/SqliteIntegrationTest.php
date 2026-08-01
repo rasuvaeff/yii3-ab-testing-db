@@ -41,7 +41,8 @@ final class SqliteIntegrationTest
                 salt             VARCHAR(190) NOT NULL DEFAULT \'\',
                 fallback_variant VARCHAR(190) NOT NULL DEFAULT \'\',
                 variants         TEXT         NOT NULL DEFAULT \'{}\',
-                targeting        TEXT         NULL
+                targeting        TEXT         NULL,
+                revision         INTEGER      NOT NULL DEFAULT 1
             )
         ')->execute();
     }
@@ -205,7 +206,8 @@ final class SqliteIntegrationTest
                 salt             VARCHAR(190) NOT NULL DEFAULT \'\',
                 fallback_variant VARCHAR(190) NOT NULL DEFAULT \'\',
                 variants         TEXT         NOT NULL DEFAULT \'{}\',
-                targeting        TEXT         NULL
+                targeting        TEXT         NULL,
+                revision         INTEGER      NOT NULL DEFAULT 1
             )
         ')->execute();
 

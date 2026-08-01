@@ -78,6 +78,8 @@ final class MigrationTest
     public function migratedTableIsReadableByProvider(): void
     {
         (new M260610000000CreateAbExperimentsTable())->up($this->builder);
+        (new M260619000001AddTargetingToAbExperiments())->up($this->builder);
+        (new M260731000000AddOperationalFieldsToAbExperiments())->up($this->builder);
 
         $this->db->createCommand(
             sql: "INSERT INTO ab_experiments (name, enabled, salt, fallback_variant, variants)
