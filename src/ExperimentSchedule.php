@@ -27,7 +27,7 @@ final readonly class ExperimentSchedule
         public ?DateTimeImmutable $startsAt = null,
         public ?DateTimeImmutable $endsAt = null,
     ) {
-        if ($startsAt !== null && $endsAt !== null && $endsAt <= $startsAt) {
+        if ($startsAt instanceof DateTimeImmutable && $endsAt instanceof DateTimeImmutable && $endsAt <= $startsAt) {
             throw new InvalidArgumentException(
                 sprintf(
                     'Experiment must end after it starts, got %s to %s',
@@ -50,10 +50,10 @@ final readonly class ExperimentSchedule
      */
     public function isActiveAt(DateTimeImmutable $moment): bool
     {
-        if ($this->startsAt !== null && $moment < $this->startsAt) {
+        if ($this->startsAt instanceof DateTimeImmutable && $moment < $this->startsAt) {
             return false;
         }
 
-        return $this->endsAt === null || $moment < $this->endsAt;
+        return !$this->endsAt instanceof DateTimeImmutable || $moment < $this->endsAt;
     }
 }

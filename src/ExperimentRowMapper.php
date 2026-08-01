@@ -223,10 +223,11 @@ final readonly class ExperimentRowMapper
     /** @param array<array-key, mixed> $row */
     private function extractNullableDateTime(array $row, string $column): ?\DateTimeImmutable
     {
-        /** @var mixed $value */
-        $value = $row[$column] ?? null;
+        if (!isset($row[$column]) || $row[$column] === '') {
+            return null;
+        }
 
-        return $value === null || $value === '' ? null : $this->extractDateTime(row: $row, column: $column);
+        return $this->extractDateTime(row: $row, column: $column);
     }
 
     /**

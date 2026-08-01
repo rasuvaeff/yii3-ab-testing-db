@@ -24,8 +24,8 @@ final class ExperimentScheduleTest
 
         Assert::null($schedule->startsAt);
         Assert::null($schedule->endsAt);
-        Assert::true($schedule->isActiveAt(self::at('2020-01-01 00:00:00')));
-        Assert::true($schedule->isActiveAt(self::at('2100-01-01 00:00:00')));
+        Assert::true($schedule->isActiveAt($this->at('2020-01-01 00:00:00')));
+        Assert::true($schedule->isActiveAt($this->at('2100-01-01 00:00:00')));
     }
 
     /**
@@ -35,11 +35,11 @@ final class ExperimentScheduleTest
     public function reportsWhetherTheMomentFallsInTheWindow(array $window, string $moment, bool $expected): void
     {
         $schedule = new ExperimentSchedule(
-            startsAt: $window[0] === null ? null : self::at($window[0]),
-            endsAt: $window[1] === null ? null : self::at($window[1]),
+            startsAt: $window[0] === null ? null : $this->at($window[0]),
+            endsAt: $window[1] === null ? null : $this->at($window[1]),
         );
 
-        Assert::same($schedule->isActiveAt(self::at($moment)), $expected);
+        Assert::same($schedule->isActiveAt($this->at($moment)), $expected);
     }
 
     public static function windowProvider(): iterable
@@ -59,8 +59,8 @@ final class ExperimentScheduleTest
         Expect::exception(InvalidArgumentException::class);
 
         new ExperimentSchedule(
-            startsAt: self::at('2026-08-02 10:00:00'),
-            endsAt: self::at('2026-08-01 10:00:00'),
+            startsAt: $this->at('2026-08-02 10:00:00'),
+            endsAt: $this->at('2026-08-01 10:00:00'),
         );
     }
 
@@ -69,12 +69,12 @@ final class ExperimentScheduleTest
         Expect::exception(InvalidArgumentException::class);
 
         new ExperimentSchedule(
-            startsAt: self::at('2026-08-01 10:00:00'),
-            endsAt: self::at('2026-08-01 10:00:00'),
+            startsAt: $this->at('2026-08-01 10:00:00'),
+            endsAt: $this->at('2026-08-01 10:00:00'),
         );
     }
 
-    private static function at(string $value): DateTimeImmutable
+    private function at(string $value): DateTimeImmutable
     {
         return new DateTimeImmutable($value, new DateTimeZone('UTC'));
     }
