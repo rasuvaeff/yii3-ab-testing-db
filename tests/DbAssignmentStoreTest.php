@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
+namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
 use Rasuvaeff\Yii3AbTestingDb\AbAssignmentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\DbAssignmentStore;

@@ -107,29 +107,20 @@ final readonly class DbAssignmentStore implements ConfigurationAwareAssignmentSt
     }
 
     /**
+     * Both columns are `NOT NULL` strings written by this class alone, so there
+     * is nothing to validate here — unlike the experiments table, which holds
+     * operator-authored JSON and is validated row by row.
+     *
      * @return array{variant: string, configuration_id: string}|null
      */
     private function read(string $experiment, string $subjectId): ?array
     {
-        /** @var array<string, mixed>|null $row */
-        $row = (new Query($this->db))
+        /** @var array{variant: string, configuration_id: string}|null */
+        return (new Query($this->db))
             ->select(['variant', 'configuration_id'])
             ->from($this->table)
             ->where(['experiment' => $experiment, 'subject_id' => $subjectId])
             ->one();
-
-        if ($row === null) {
-            return null;
-        }
-
-        $variant = $row['variant'] ?? null;
-        $configurationId = $row['configuration_id'] ?? null;
-
-        if (!\is_string($variant) || !\is_string($configurationId)) {
-            return null;
-        }
-
-        return ['variant' => $variant, 'configuration_id' => $configurationId];
     }
 
     /**

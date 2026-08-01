@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
 
 use Rasuvaeff\Yii3AbTesting\Experiment;
+use Rasuvaeff\Yii3AbTestingDb\DbAssignmentStore;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260801000000CreateAbAssignmentsTable;
 use Testo\Assert;
 use Testo\Codecov\CoversNothing;
 use Testo\Test;
 use Yiisoft\Db\Cache\SchemaCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
+use Yiisoft\Db\Migration\Informer\NullMigrationInformer;
+use Yiisoft\Db\Migration\MigrationBuilder;
 use Yiisoft\Db\Mysql\Connection as MysqlConnection;
 use Yiisoft\Db\Mysql\Driver as MysqlDriver;
 use Yiisoft\Db\Pgsql\Connection as PgsqlConnection;
@@ -70,6 +74,53 @@ final class CrossDatabaseRepositoryTest
             Assert::same($updated->experiment->variants, ['control' => 25, 'green' => 75]);
         } finally {
             $db->createCommand('DROP TABLE IF EXISTS ab_experiments')->execute();
+            $db->close();
+        }
+    }
+
+    /**
+     * `upsert()` compiles to different SQL per driver — `ON CONFLICT` versus
+     * `ON DUPLICATE KEY UPDATE` — and whether a plain unique *index* is a valid
+     * conflict target is exactly the part that differs. SQLite passing proves
+     * nothing about the other two.
+     */
+    public function assignmentStoreUpsertsOnConfiguredDatabase(): void
+    {
+        $database = getenv('AB_TEST_DB');
+
+        if ($database !== 'mysql' && $database !== 'pgsql') {
+            Assert::true($database === false || $database === '');
+
+            return;
+        }
+
+        $db = $this->connection($database);
+        $db->open();
+
+        try {
+            $db->createCommand('DROP TABLE IF EXISTS ab_assignments')->execute();
+            (new M260801000000CreateAbAssignmentsTable())->up(
+                new MigrationBuilder($db, new NullMigrationInformer()),
+            );
+
+            $store = new DbAssignmentStore(db: $db);
+
+            $store->putForConfiguration('checkout', 'u1', 'green', 'db:1');
+            Assert::same($store->getForConfiguration('checkout', 'u1', 'db:1'), 'green');
+
+            // The upsert path: a second write for the same key must update in
+            // place rather than fail on the unique index or add a row.
+            $store->putForConfiguration('checkout', 'u1', 'control', 'db:2');
+            Assert::same($store->getForConfiguration('checkout', 'u1', 'db:2'), 'control');
+            Assert::null($store->getForConfiguration('checkout', 'u1', 'db:1'));
+            Assert::same(
+                (int) $db->createCommand('SELECT COUNT(*) FROM ab_assignments')->queryScalar(),
+                1,
+            );
+
+            Assert::same($store->forget('u1'), 1);
+        } finally {
+            $db->createCommand('DROP TABLE IF EXISTS ab_assignments')->execute();
             $db->close();
         }
     }
