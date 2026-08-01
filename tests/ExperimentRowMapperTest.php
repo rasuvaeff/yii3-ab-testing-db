@@ -546,6 +546,56 @@ final class ExperimentRowMapperTest
         (new ExperimentRowMapper())->map(self::without($this->row(), 'revision'));
     }
 
+    public function projectsTheRevisionIntoTheConfigurationId(): void
+    {
+        $experiment = (new ExperimentRowMapper())->map($this->row(revision: 7));
+
+        Assert::same($experiment->configurationId, 'db:7');
+    }
+
+    public function acceptsANumericStringRevision(): void
+    {
+        // drivers return integers as strings depending on PDO settings
+        $experiment = (new ExperimentRowMapper())->map($this->row(revision: '42'));
+
+        Assert::same($experiment->configurationId, 'db:42');
+    }
+
+    #[DataProvider('invalidRevisionProvider')]
+    public function rejectsAnInvalidRevision(int|string $revision): void
+    {
+        Expect::exception(InvalidExperimentRowException::class)
+            ->withMessage('Missing or invalid column "revision" in experiment row');
+
+        (new ExperimentRowMapper())->map($this->row(revision: $revision));
+    }
+
+    public static function invalidRevisionProvider(): iterable
+    {
+        yield 'zero' => [0];
+        yield 'negative' => [-1];
+        yield 'not a number' => ['abc'];
+        // the pattern is anchored at both ends: a numeric tail must not pass
+        yield 'numeric tail' => ['x5'];
+        yield 'numeric head' => ['5x'];
+        // the caret matters: PHP's (int) cast skips leading whitespace, so an
+        // unanchored pattern would quietly accept " 5" as revision 5
+        yield 'leading space' => [' 5'];
+        yield 'empty' => [''];
+    }
+
+    public function rejectsAnUnknownState(): void
+    {
+        Expect::exception(InvalidExperimentRowException::class)
+            ->withMessage('Invalid experiment state "retired"');
+
+        (new ExperimentRowMapper())->mapRecord($this->row() + [
+            'state' => 'retired',
+            'created_at' => '2026-08-01 10:00:00.000000',
+            'updated_at' => '2026-08-01 10:00:00.000000',
+        ]);
+    }
+
     public function readsTheScheduleWindowFromTheRow(): void
     {
         $record = (new ExperimentRowMapper())->mapRecord($this->row() + [

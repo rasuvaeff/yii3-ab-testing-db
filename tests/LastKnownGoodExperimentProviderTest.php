@@ -29,11 +29,13 @@ final class LastKnownGoodExperimentProviderTest
 
     public function passesThroughWhenTheSourceWorks(): void
     {
-        $inner = $this->provider([$this->experiment()]);
+        // more than one experiment on purpose: a decorator that returned only
+        // the first would look correct against a single-element set
+        $inner = $this->provider([self::makeExperiment('checkout'), self::makeExperiment('pricing')]);
 
         $experiments = (new LastKnownGoodExperimentProvider($inner, $this->logger))->getExperiments();
 
-        Assert::same(array_keys($experiments), ['checkout']);
+        Assert::same(array_keys($experiments), ['checkout', 'pricing']);
         Assert::same($this->logger->getMessages(), []);
     }
 
@@ -120,6 +122,25 @@ final class LastKnownGoodExperimentProviderTest
         $provider->getExperiments();
 
         Assert::same(array_keys($provider->getExperiments()), ['pricing']);
+    }
+
+    /**
+     * The whole set must be cached, not a slice of it: serving a subset would
+     * silently drop experiments during an outage.
+     */
+    public function cachesEveryExperimentNotJustOne(): void
+    {
+        $provider = new LastKnownGoodExperimentProvider(
+            $this->provider(
+                [self::makeExperiment('checkout'), self::makeExperiment('pricing'), self::makeExperiment('banner')],
+                failAfter: 1,
+            ),
+            $this->logger,
+        );
+
+        $provider->getExperiments();
+
+        Assert::same(array_keys($provider->getExperiments()), ['checkout', 'pricing', 'banner']);
     }
 
     public static function makeExperiment(string $name): Experiment

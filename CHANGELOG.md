@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `DbAssignmentStore` — server-side sticky assignments keyed by
+  `(experiment, subject_id)`, implementing core's
+  `ConfigurationAwareAssignmentStore`. `forget()` and `deleteExperiment()`
+  cover erasure and cleanup; `subject_id` is personal data when it is a user id.
+- `ExperimentSchedule` on `ExperimentRecord` — the planned run window
+  (`starts_at` / `ends_at`). Planning data only: it does not affect assignment.
+- `LastKnownGoodExperimentProvider` — opt-in decorator serving the last
+  successful read during a source outage, logging every fallback at `error`.
+- Migrations `M260801000000CreateAbAssignmentsTable` and
+  `M260801000001AddScheduleToAbExperiments`.
+
+### Changed
+
+- **Breaking.** Requires `rasuvaeff/yii3-ab-testing` `^2.0`.
+- **Breaking.** A row without a `revision` column now throws
+  `InvalidExperimentRowException` instead of yielding an experiment with no
+  configuration identity — which made sticky stores serve stale variants and
+  exposure deduplication lose its key, both silently.
+
+See [UPGRADE.md](UPGRADE.md) for the migration steps.
+
 ## 2.1.1 — 2026-08-01
 
 - Docs: the documented `setSourceNamespaces()` migration registration does not

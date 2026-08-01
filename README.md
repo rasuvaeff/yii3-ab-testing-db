@@ -62,8 +62,9 @@ CREATE TABLE ab_experiments (
 | `variants` | `JSON`/`TEXT` | `'{}'` | JSON object `{"variant": weight}`, non-negative integer weights |
 | `targeting` | `JSON`/`TEXT` nullable | `null` | Targeting rule encoded by the shared core codec registry |
 | `state` | `VARCHAR(20)` | `running` | `draft`, `running`, `paused`, `completed` or `archived` |
-| `revision` | `INTEGER` | `1` | Optimistic-lock version; increments after every write |
+| `revision` | `INTEGER` | `1` | Optimistic-lock version; increments after every write. **Required since 3.0** — without it an experiment has no configuration identity |
 | `created_at`, `updated_at` | `VARCHAR(32)` | — | UTC operational timestamps |
+| `starts_at`, `ends_at` | `VARCHAR(32)` nullable | `null` | Planned run window; `null` means unscheduled |
 
 A row's `variants` looks like `{"control":50,"green":50}`. The total weight must
 be greater than zero and `fallback_variant` must match one of the keys, or the row
@@ -114,6 +115,8 @@ Until that is fixed upstream, apply the bundled migration yourself:
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260610000000CreateAbExperimentsTable;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260619000001AddTargetingToAbExperiments;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260731000000AddOperationalFieldsToAbExperiments;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260801000000CreateAbAssignmentsTable;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260801000001AddScheduleToAbExperiments;
 use Yiisoft\Db\Migration\Informer\ConsoleMigrationInformer;
 use Yiisoft\Db\Migration\MigrationBuilder;
 use Yiisoft\Injector\Injector;
@@ -125,6 +128,8 @@ foreach ([
     M260610000000CreateAbExperimentsTable::class,
     M260619000001AddTargetingToAbExperiments::class,
     M260731000000AddOperationalFieldsToAbExperiments::class,
+    M260801000000CreateAbAssignmentsTable::class,
+    M260801000001AddScheduleToAbExperiments::class,
 ] as $class) {
     $injector->make($class)->up($builder);
 }
@@ -281,6 +286,10 @@ silently overwriting another operator's change.
 | `DbExperimentRepository` | Transactional DB implementation with optimistic locking |
 | `ExperimentRecord` | Runtime experiment plus state, revision and timestamps |
 | `ExperimentState` | Lifecycle enum: draft/running/paused/completed/archived |
+| `LastKnownGoodExperimentProvider` | Opt-in decorator: serves the last successful read during a source outage, logging every fallback |
+| `DbAssignmentStore` | Server-side sticky assignments, keyed by subject rather than by browser |
+| `ExperimentSchedule` | Planned run window; planning data only, never an assignment input |
+| `AbExperimentsTableName`, `AbAssignmentsTableName` | Table names as types, so migrations can be configured through `Injector` |
 | `InvalidExperimentRowException` | Thrown when a DB row has invalid structure or yields an invalid experiment |
 
 ## Security

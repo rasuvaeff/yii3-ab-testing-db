@@ -63,8 +63,9 @@ CREATE TABLE ab_experiments (
 | `variants` | `JSON`/`TEXT` | `'{}'` | JSON-объект `{"variant": weight}`, веса — неотрицательные целые |
 | `targeting` | nullable `JSON`/`TEXT` | `null` | Targeting rule в формате общего core codec registry |
 | `state` | `VARCHAR(20)` | `running` | `draft`, `running`, `paused`, `completed` или `archived` |
-| `revision` | `INTEGER` | `1` | Версия optimistic locking; растёт после каждой записи |
+| `revision` | `INTEGER` | `1` | Версия optimistic locking; растёт после каждой записи. **Обязателен с 3.0** — без него у эксперимента нет идентичности конфигурации |
 | `created_at`, `updated_at` | `VARCHAR(32)` | — | Operational timestamps в UTC |
+| `starts_at`, `ends_at` | `VARCHAR(32)` nullable | `null` | Планируемое окно запуска; `null` — не запланировано |
 
 Поле `variants` в строке выглядит как `{"control":50,"green":50}`. Сумма весов
 должна быть больше нуля, а `fallback_variant` обязан совпадать с одним из ключей
@@ -114,6 +115,8 @@ return [
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260610000000CreateAbExperimentsTable;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260619000001AddTargetingToAbExperiments;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260731000000AddOperationalFieldsToAbExperiments;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260801000000CreateAbAssignmentsTable;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260801000001AddScheduleToAbExperiments;
 use Yiisoft\Db\Migration\Informer\ConsoleMigrationInformer;
 use Yiisoft\Db\Migration\MigrationBuilder;
 use Yiisoft\Injector\Injector;
@@ -125,6 +128,8 @@ foreach ([
     M260610000000CreateAbExperimentsTable::class,
     M260619000001AddTargetingToAbExperiments::class,
     M260731000000AddOperationalFieldsToAbExperiments::class,
+    M260801000000CreateAbAssignmentsTable::class,
+    M260801000001AddScheduleToAbExperiments::class,
 ] as $class) {
     $injector->make($class)->up($builder);
 }
@@ -283,6 +288,10 @@ Revision обязательна для мутирующих команд, что
 | `DbExperimentRepository` | Транзакционная DB-реализация с optimistic locking |
 | `ExperimentRecord` | Runtime experiment вместе со state, revision и timestamps |
 | `ExperimentState` | Lifecycle enum: draft/running/paused/completed/archived |
+| `LastKnownGoodExperimentProvider` | Opt-in декоратор: отдаёт последнее удачное чтение во время недоступности источника, логируя каждый fallback |
+| `DbAssignmentStore` | Серверное закрепление варианта, ключ — субъект, а не браузер |
+| `ExperimentSchedule` | Планируемое окно запуска; только планирование, на назначение не влияет |
+| `AbExperimentsTableName`, `AbAssignmentsTableName` | Имена таблиц как типы, чтобы миграции настраивались через `Injector` |
 | `InvalidExperimentRowException` | Бросается, когда строка БД имеет невалидную структуру или порождает невалидный эксперимент |
 
 ## Безопасность
