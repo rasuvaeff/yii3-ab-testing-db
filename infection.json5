@@ -12,7 +12,12 @@
     },
     "testFramework": "testo",
     "testFrameworkOptions": "--suite=Unit",
-    "minMsi": 100,
+    // 99, not 100, because one equivalent mutant cannot be killed: dropping
+    // the (string) cast in CreateExperimentCommand::execute never changes
+    // observable behaviour, since no non-string console argument casts into a
+    // name matching Experiment's /^[a-z][a-z0-9_-]*\z/. Everything else is at
+    // 100 — a second escape here is a real regression, not slack.
+    "minMsi": 99,
     "mutators": {
         "@default": true
     }
