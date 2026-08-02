@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
+namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
 use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
@@ -10,7 +10,7 @@ use Rasuvaeff\Yii3AbTestingDb\Migration\M260610000000CreateAbExperimentsTable;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260619000001AddTargetingToAbExperiments;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260731000000AddOperationalFieldsToAbExperiments;
 use Testo\Assert;
-use Testo\Codecov\CoversNothing;
+use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
@@ -23,7 +23,9 @@ use Yiisoft\Db\Sqlite\Driver as SqliteDriver;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 
 #[Test]
-#[CoversNothing]
+#[Covers(M260610000000CreateAbExperimentsTable::class)]
+#[Covers(M260619000001AddTargetingToAbExperiments::class)]
+#[Covers(M260731000000AddOperationalFieldsToAbExperiments::class)]
 final class MigrationTest
 {
     private ConnectionInterface $db;
