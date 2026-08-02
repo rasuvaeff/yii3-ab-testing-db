@@ -99,12 +99,17 @@ bootstrap `pcov` inside the `composer:2` container.
 - Empty `salt` falls back to the experiment `name` (the column default is `''`).
 - Row → `Experiment` mapping lives in `ExperimentRowMapper` (pure, unit-tested).
   The provider is covered by the SQLite integration test.
-- **Migrations live in `src/Migration/` under the package namespace** and are
-  registered with `setSourceNamespaces()`. The table name is
-  `AbExperimentsTableName`, a VO — `Injector::make()` resolves arguments by name
-  or type and never reads a container definition keyed by the migration's class,
-  so a scalar `string $table` could not be configured at all. Never reintroduce
-  one.
+- **Migrations live in `src/Migration/` under the package namespace.** The table
+  name is `AbExperimentsTableName`, a VO — `Injector::make()` resolves arguments
+  by name or type and never reads a container definition keyed by the
+  migration's class, so a scalar `string $table` could not be configured at all.
+  Never reintroduce one.
+- **`setSourceNamespaces()` does NOT find them** on any released
+  `yiisoft/db-migration` (≤ 2.0.1): it matches the PSR-4 map by string prefix,
+  so `Rasuvaeff\Yii3AbTestingDb\Migration` resolves into the core package and
+  discovery silently finds zero — `migrate:up` exits 0 having created nothing.
+  Until an upstream release carries the fix, migrations are applied directly via
+  `Injector::make($class)->up($builder)` — see the README.
 - **Never edit a migration that has been released.** `yiisoft/db-migration`
   records applied files, and the ClickHouse runner in the sibling package
   records a checksum; editing one after publication makes an installation that
