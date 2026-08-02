@@ -2,16 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
+namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
 use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\Exception\ExperimentNotFoundException;
 use Rasuvaeff\Yii3AbTestingDb\Exception\RevisionConflictException;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentCacheInvalidator;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentRecord;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentState;
 use Testo\Assert;
-use Testo\Codecov\CoversNothing;
+use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
@@ -22,7 +24,10 @@ use Yiisoft\Db\Sqlite\Driver as SqliteDriver;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 
 #[Test]
-#[CoversNothing]
+#[Covers(DbExperimentRepository::class)]
+#[Covers(RevisionConflictException::class)]
+#[Covers(ExperimentRecord::class)]
+#[Covers(ExperimentState::class)]
 final class DbExperimentRepositoryTest
 {
     private ConnectionInterface $db;
@@ -122,10 +127,78 @@ final class DbExperimentRepositoryTest
         Assert::instanceOf($record->experiment->targeting, AttributeTargetingRule::class);
     }
 
-    private function experiment(bool $enabled): Experiment
+    public function getThrowsWhenTheExperimentDoesNotExist(): void
+    {
+        try {
+            $this->repository->get('missing');
+            Assert::fail('Expected ExperimentNotFoundException');
+        } catch (ExperimentNotFoundException $e) {
+            Assert::string($e->getMessage())->contains('"missing" does not exist');
+        }
+    }
+
+    public function createDerivesTheStateFromTheEnabledFlag(): void
+    {
+        Assert::same(
+            $this->repository->create($this->experiment(enabled: true))->state,
+            ExperimentState::Running,
+        );
+        Assert::same(
+            $this->repository->create($this->experiment(enabled: false, name: 'search'))->state,
+            ExperimentState::Paused,
+        );
+    }
+
+    public function readsAreMatchedByNameNotByRowOrder(): void
+    {
+        $this->repository->create($this->experiment(enabled: true));
+        $this->repository->create($this->experiment(enabled: false, name: 'search'));
+
+        Assert::same($this->repository->get('search')->experiment->name, 'search');
+        Assert::same($this->repository->get('checkout')->experiment->name, 'checkout');
+    }
+
+    public function anUpdateTouchesOnlyTheNamedExperiment(): void
+    {
+        $this->repository->create($this->experiment(enabled: true));
+        $this->repository->create($this->experiment(enabled: true, name: 'search'));
+
+        $this->repository->disable('checkout', 1);
+
+        Assert::same($this->repository->get('checkout')->revision, 2);
+        Assert::same($this->repository->get('search')->revision, 1);
+        Assert::same($this->repository->get('search')->state, ExperimentState::Running);
+    }
+
+    public function aSaltEqualToTheNameRoundTripsThroughTheEmptyColumnDefault(): void
+    {
+        $this->repository->create(new Experiment(
+            name: 'checkout',
+            enabled: true,
+            salt: 'checkout',
+            fallbackVariant: 'control',
+            variants: ['control' => 50, 'green' => 50],
+        ));
+        Assert::same($this->repository->get('checkout')->experiment->salt, 'checkout');
+
+        $this->repository->create($this->experiment(enabled: true, name: 'search'));
+        Assert::same($this->repository->get('search')->experiment->salt, 'checkout-v1');
+    }
+
+    public function worksWithoutACacheInvalidator(): void
+    {
+        $repository = new DbExperimentRepository(db: $this->db);
+
+        $created = $repository->create($this->experiment(enabled: true));
+        Assert::same($created->revision, 1);
+
+        Assert::same($repository->disable('checkout', 1)->revision, 2);
+    }
+
+    private function experiment(bool $enabled, string $name = 'checkout'): Experiment
     {
         return new Experiment(
-            name: 'checkout',
+            name: $name,
             enabled: $enabled,
             salt: 'checkout-v1',
             fallbackVariant: 'control',

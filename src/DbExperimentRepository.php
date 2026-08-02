@@ -128,7 +128,7 @@ final readonly class DbExperimentRepository implements ExperimentRepository
     {
         $current = $this->get($name);
         $this->update(
-            experiment: $this->withEnabled($current->experiment, true),
+            experiment: $current->experiment,
             state: ExperimentState::Running,
             expectedRevision: $expectedRevision,
         );
@@ -141,7 +141,7 @@ final readonly class DbExperimentRepository implements ExperimentRepository
     {
         $current = $this->get($name);
         $this->update(
-            experiment: $this->withEnabled($current->experiment, false),
+            experiment: $current->experiment,
             state: ExperimentState::Paused,
             expectedRevision: $expectedRevision,
         );
@@ -177,7 +177,7 @@ final readonly class DbExperimentRepository implements ExperimentRepository
     {
         $current = $this->get($name);
         $this->update(
-            experiment: $this->withEnabled($current->experiment, false),
+            experiment: $current->experiment,
             state: ExperimentState::Archived,
             expectedRevision: $expectedRevision,
         );
@@ -234,17 +234,6 @@ final readonly class DbExperimentRepository implements ExperimentRepository
         $this->invalidateCache();
     }
 
-    private function withEnabled(Experiment $experiment, bool $enabled): Experiment
-    {
-        return new Experiment(
-            name: $experiment->name,
-            enabled: $enabled,
-            salt: $experiment->salt,
-            fallbackVariant: $experiment->fallbackVariant,
-            variants: $experiment->variants,
-            targeting: $experiment->targeting,
-        );
-    }
 
     /** @return array<string, scalar|null> */
     private function definitionColumns(Experiment $experiment, ExperimentState $state): array

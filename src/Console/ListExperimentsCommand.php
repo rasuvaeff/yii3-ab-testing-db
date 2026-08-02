@@ -31,7 +31,7 @@ final class ListExperimentsCommand extends Command
             $rows[] = [
                 $record->experiment->name,
                 $record->state->value,
-                (string) $record->revision,
+                $record->revision,
                 $record->experiment->enabled ? 'yes' : 'no',
                 json_encode($record->experiment->variants, JSON_THROW_ON_ERROR),
             ];

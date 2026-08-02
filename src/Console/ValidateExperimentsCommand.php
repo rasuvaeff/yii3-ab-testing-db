@@ -27,7 +27,7 @@ final class ValidateExperimentsCommand extends Command
         try {
             $count = \count($this->repository->list());
         } catch (\Throwable $e) {
-            $output->writeln('<error>' . $e->getMessage() . '</error>');
+            $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
 
             return Command::FAILURE;
         }

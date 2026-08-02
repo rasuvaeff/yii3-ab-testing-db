@@ -37,7 +37,7 @@ final class EnableExperimentCommand extends Command
                 expectedRevision: (int) $input->getArgument('revision'),
             );
         } catch (\Throwable $e) {
-            $output->writeln('<error>' . $e->getMessage() . '</error>');
+            $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
 
             return Command::FAILURE;
         }
