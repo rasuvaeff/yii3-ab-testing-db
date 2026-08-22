@@ -132,7 +132,7 @@ final class ExperimentRowMapperTest
             Assert::string($e->getMessage())->contains('"enabled"');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     /**
@@ -148,7 +148,7 @@ final class ExperimentRowMapperTest
             Assert::string($e->getMessage())->contains('\000\002');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     public function emptySaltFallsBackToName(): void
@@ -188,7 +188,7 @@ final class ExperimentRowMapperTest
             Assert::string($e->getMessage())->contains('Missing column "enabled"');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     public function throwsOnInvalidEnabledType(): void
@@ -202,7 +202,7 @@ final class ExperimentRowMapperTest
             Assert::string($e->getMessage())->contains('Missing or invalid column "enabled"');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     /**
@@ -251,7 +251,7 @@ final class ExperimentRowMapperTest
             Assert::true(str_contains($e->getMessage(), $needle));
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     public function wrapsCoreExceptionForInvalidName(): void
@@ -591,7 +591,7 @@ final class ExperimentRowMapperTest
             Assert::same($e->getMessage(), 'Missing column "variants" in experiment row');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     /**

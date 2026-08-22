@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Adopt `rasuvaeff/rector-named-literals` and apply the named-argument rule to literal calls (development tooling only; no runtime behaviour changes).
+
 ### Fixed
 
 - The bundled migrations can now be applied on MySQL 8. `M260610000000CreateAbExperimentsTable` declared `variants` as `text NOT NULL DEFAULT '{}'` and `M260619000001AddTargetingToAbExperiments` declared `targeting` as `text NULL DEFAULT NULL`; MySQL rejects a literal `DEFAULT` on a TEXT column with error 1101, so the chain aborted at the first migration and the package could not be installed on MySQL at all. Both `DEFAULT` clauses are removed — neither was reachable (the repository always writes `variants`, and `NULL` is already the implicit default of a nullable column), so the change is a no-op on PostgreSQL and SQLite.

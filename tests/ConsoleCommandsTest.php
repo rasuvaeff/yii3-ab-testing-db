@@ -273,7 +273,7 @@ final class ConsoleCommandsTest
 
     private function styledError(string $message): string
     {
-        return (new OutputFormatter(true))->format('<error>' . $message . '</error>');
+        return (new OutputFormatter(decorated: true))->format('<error>' . $message . '</error>');
     }
 
     public function listRendersEveryColumnForEachExperiment(): void
