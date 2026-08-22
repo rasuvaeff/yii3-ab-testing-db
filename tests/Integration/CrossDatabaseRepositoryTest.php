@@ -6,8 +6,13 @@ namespace Rasuvaeff\Yii3AbTestingDb\Tests\Integration;
 
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTestingDb\DbAssignmentStore;
+use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260610000000CreateAbExperimentsTable;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260619000001AddTargetingToAbExperiments;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260731000000AddOperationalFieldsToAbExperiments;
 use Rasuvaeff\Yii3AbTestingDb\Migration\M260801000000CreateAbAssignmentsTable;
+use Rasuvaeff\Yii3AbTestingDb\Migration\M260801000001AddScheduleToAbExperiments;
 use Testo\Assert;
 use Testo\Codecov\CoversNothing;
 use Testo\Test;
@@ -39,21 +44,7 @@ final class CrossDatabaseRepositoryTest
         $db->open();
 
         try {
-            $db->createCommand('DROP TABLE IF EXISTS ab_experiments')->execute();
-            $db->createCommand(sql: '
-                CREATE TABLE ab_experiments (
-                    name VARCHAR(190) PRIMARY KEY,
-                    enabled BOOLEAN NOT NULL,
-                    salt VARCHAR(190) NOT NULL,
-                    fallback_variant VARCHAR(190) NOT NULL,
-                    variants TEXT NOT NULL,
-                    targeting TEXT NULL,
-                    state VARCHAR(20) NOT NULL,
-                    revision INTEGER NOT NULL,
-                    created_at VARCHAR(32) NOT NULL,
-                    updated_at VARCHAR(32) NOT NULL
-                )
-            ')->execute();
+            $this->migrateExperiments($db);
 
             $repository = new DbExperimentRepository(db: $db);
             $created = $repository->create(new Experiment(
@@ -123,6 +114,78 @@ final class CrossDatabaseRepositoryTest
             $db->createCommand('DROP TABLE IF EXISTS ab_assignments')->execute();
             $db->close();
         }
+    }
+
+    /**
+     * The kill switch must survive a round trip through the real schema.
+     *
+     * `Query` reads without typecasting, so an `enabled` column comes back in
+     * whatever shape the driver chooses — a native `bool` on pdo_pgsql, an
+     * `int` for the `BIT(1)` that `yiisoft/db-mysql` compiles `boolean` into.
+     * `ExperimentRowMapper` used to answer PHP truthiness for any string it did
+     * not recognise, so a representation of *false* it had not seen before read
+     * as `true` and silently re-enabled a disabled experiment.
+     *
+     * The table has to come from the bundled migrations for this to mean
+     * anything: a hand-written `CREATE TABLE` picks its own column type and
+     * proves nothing about the one operators actually get.
+     */
+    public function disabledExperimentStaysDisabledOnConfiguredDatabase(): void
+    {
+        $database = getenv('AB_TEST_DB');
+
+        if ($database !== 'mysql' && $database !== 'pgsql') {
+            Assert::true($database === false || $database === '');
+
+            return;
+        }
+
+        $db = $this->connection($database);
+        $db->open();
+
+        try {
+            $this->migrateExperiments($db);
+
+            $repository = new DbExperimentRepository(db: $db);
+            $repository->create(new Experiment(
+                name: 'checkout',
+                enabled: true,
+                salt: 'checkout-v1',
+                fallbackVariant: 'control',
+                variants: ['control' => 50, 'green' => 50],
+            ));
+
+            $provider = new DbExperimentProvider(db: $db);
+            Assert::true($provider->getExperiments()['checkout']->enabled);
+
+            $db->createCommand()->update('ab_experiments', ['enabled' => false], ['name' => 'checkout'])->execute();
+
+            Assert::false($provider->getExperiments()['checkout']->enabled);
+        } finally {
+            $db->createCommand('DROP TABLE IF EXISTS ab_experiments')->execute();
+            $db->close();
+        }
+    }
+
+    /**
+     * Applies the bundled experiments migrations in order.
+     *
+     * This used to be a hand-written `CREATE TABLE` with no defaults, which is
+     * why nothing caught that `M260610000000` and `M260619000001` both emitted
+     * a literal `DEFAULT` on a TEXT column — MySQL rejects that with error
+     * 1101, so the chain died at step 1 and the package could not be installed
+     * on MySQL at all. Running the real migrations is the point of this test.
+     */
+    private function migrateExperiments(ConnectionInterface $db): void
+    {
+        $db->createCommand('DROP TABLE IF EXISTS ab_experiments')->execute();
+
+        $b = new MigrationBuilder($db, new NullMigrationInformer());
+
+        (new M260610000000CreateAbExperimentsTable())->up($b);
+        (new M260619000001AddTargetingToAbExperiments())->up($b);
+        (new M260731000000AddOperationalFieldsToAbExperiments())->up($b);
+        (new M260801000001AddScheduleToAbExperiments())->up($b);
     }
 
     private function connection(string $database): ConnectionInterface

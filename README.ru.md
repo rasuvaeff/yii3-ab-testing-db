@@ -53,7 +53,7 @@ CREATE TABLE ab_experiments (
     enabled          BOOLEAN      NOT NULL DEFAULT TRUE,
     salt             VARCHAR(190) NOT NULL DEFAULT '',
     fallback_variant VARCHAR(190) NOT NULL DEFAULT '',
-    variants         TEXT         NOT NULL DEFAULT '{}',
+    variants         TEXT         NOT NULL,
     targeting        TEXT         NULL,
     state            VARCHAR(20)  NOT NULL DEFAULT 'running',
     revision         INTEGER      NOT NULL DEFAULT 1,
@@ -78,6 +78,17 @@ CREATE TABLE ab_experiments (
 Поле `variants` в строке выглядит как `{"control":50,"green":50}`. Сумма весов
 должна быть больше нуля, а `fallback_variant` обязан совпадать с одним из ключей
 — иначе строка отбрасывается с `InvalidExperimentRowException`.
+
+На `variants` и `targeting` нет `DEFAULT`: MySQL отвергает литеральный default
+на TEXT-колонке с ошибкой 1101, да и само значение недостижимо: репозиторий
+всегда пишет `variants`, а `NULL` и так — неявный default nullable-колонки.
+
+`enabled` читается без typecasting'а драйвера, поэтому принимается как
+нативный boolean, как int или как одно из `''`, `0`/`1`, `"\x00"`/`"\x01"`,
+`f`/`t`, `false`/`true`, `n`/`y`, `no`/`yes`, `off`/`on` (без учёта регистра).
+Всё остальное отбрасывается с `InvalidExperimentRowException`, а не угадывается:
+нераспознанное представление *false* не должно читаться как *true* и тихо
+включать эксперимент обратно.
 
 ### Миграция
 

@@ -27,6 +27,13 @@ use Yiisoft\Db\Migration\TransactionalMigrationInterface;
  * integer weight, e.g. `{"control":50,"green":50}`. `fallback_variant` must be
  * one of those variant names.
  *
+ * It carries no `DEFAULT`: MySQL rejects a literal default on a TEXT column
+ * outright (error 1101), and the value was never reachable anyway — the
+ * repository always writes `variants`, and an empty object fails
+ * {@see \Rasuvaeff\Yii3AbTestingDb\ExperimentRowMapper} validation on read.
+ * An INSERT that forgets the column must fail rather than store a row nothing
+ * can map.
+ *
  * @api
  */
 final readonly class M260610000000CreateAbExperimentsTable implements RevertibleMigrationInterface, TransactionalMigrationInterface
@@ -45,7 +52,7 @@ final readonly class M260610000000CreateAbExperimentsTable implements Revertible
                 'enabled' => 'boolean NOT NULL DEFAULT TRUE',
                 'salt' => "string(190) NOT NULL DEFAULT ''",
                 'fallback_variant' => "string(190) NOT NULL DEFAULT ''",
-                'variants' => "text NOT NULL DEFAULT '{}'",
+                'variants' => 'text NOT NULL',
             ],
         );
     }

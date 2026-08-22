@@ -25,6 +25,11 @@ use Yiisoft\Db\Migration\TransactionalMigrationInterface;
  *
  * NULL means all subjects are eligible (legacy behaviour).
  *
+ * The column carries no explicit `DEFAULT NULL`. NULL is already the implicit
+ * default of a nullable column on every driver, and `yiisoft/db-mysql` renders
+ * the parsed raw default as the quoted string `'NULL'` — which MySQL then
+ * rejects on a TEXT column with error 1101.
+ *
  * Takes the SAME {@see AbExperimentsTableName} as the create migration: in 1.x
  * both hard-coded their own default, so a configured table got CREATEd under
  * the custom name while this ALTER went to `ab_experiments` — or failed.
@@ -40,7 +45,7 @@ final readonly class M260619000001AddTargetingToAbExperiments implements Reverti
     #[\Override]
     public function up(MigrationBuilder $b): void
     {
-        $b->addColumn(table: $this->table->value, column: 'targeting', type: 'text NULL DEFAULT NULL');
+        $b->addColumn(table: $this->table->value, column: 'targeting', type: 'text NULL');
     }
 
     #[\Override]
