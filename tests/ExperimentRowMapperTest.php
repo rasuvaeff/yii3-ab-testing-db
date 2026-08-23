@@ -72,16 +72,83 @@ final class ExperimentRowMapperTest
         yield 'bool false' => [false, false];
         yield 'int 1' => [1, true];
         yield 'int 0' => [0, false];
+        yield 'int other' => [2, true];
         yield 'string 1' => ['1', true];
         yield 'string 0' => ['0', false];
         yield 'string empty' => ['', false];
-        yield 'string other' => ['yes', true];
+
+        // The raw bytes a libmysqlclient-linked PDO build returns for BIT(1).
+        yield 'binary one' => ["\x01", true];
+        yield 'binary zero' => ["\x00", false];
+
+        yield 'string t' => ['t', true];
+        yield 'string f' => ['f', false];
+        yield 'string true' => ['true', true];
+        yield 'string false' => ['false', false];
+        yield 'string TRUE uppercase' => ['TRUE', true];
+        yield 'string FALSE uppercase' => ['FALSE', false];
+        yield 'string y' => ['y', true];
+        yield 'string n' => ['n', false];
+        yield 'string yes' => ['yes', true];
+        yield 'string no' => ['no', false];
+        yield 'string on' => ['on', true];
+        yield 'string off' => ['off', false];
     }
 
     #[DataProvider('boolCastProvider')]
     public function castsEnabledColumn(bool|int|string $raw, bool $expected): void
     {
         Assert::same($this->mapper->map($this->row(enabled: $raw))->enabled, $expected);
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function unrecognisedBoolProvider(): iterable
+    {
+        yield 'arbitrary word' => ['maybe'];
+        yield 'localised no' => ['нет'];
+        yield 'padded zero' => [' 0 '];
+        yield 'numeric string' => ['00'];
+        yield 'two raw bytes' => ["\x00\x00"];
+    }
+
+    /**
+     * An unrecognised representation must be refused, never guessed.
+     *
+     * The previous implementation returned PHP truthiness, so every string
+     * except `''` and `'0'` read as `true` — including `'f'`, `'false'` and the
+     * raw `"\x00"` of a BIT(1) column. That silently re-enabled an experiment
+     * an operator had switched off: a kill switch failing open.
+     */
+    #[DataProvider('unrecognisedBoolProvider')]
+    public function throwsOnUnrecognisedEnabledString(string $raw): void
+    {
+        try {
+            $this->mapper->map($this->row(enabled: $raw));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::string($e->getMessage())->contains('Unrecognised boolean value');
+            Assert::string($e->getMessage())->contains('"enabled"');
+        }
+
+        Assert::true(actual: true);
+    }
+
+    /**
+     * Non-printable bytes must not reach the message raw — they would corrupt a
+     * log line and hide which value was rejected.
+     */
+    public function unrecognisedEnabledStringEscapesControlBytes(): void
+    {
+        try {
+            $this->mapper->map($this->row(enabled: "\x00\x02"));
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::string($e->getMessage())->contains('\000\002');
+        }
+
+        Assert::true(actual: true);
     }
 
     public function emptySaltFallsBackToName(): void
@@ -121,7 +188,7 @@ final class ExperimentRowMapperTest
             Assert::string($e->getMessage())->contains('Missing column "enabled"');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     public function throwsOnInvalidEnabledType(): void
@@ -135,7 +202,7 @@ final class ExperimentRowMapperTest
             Assert::string($e->getMessage())->contains('Missing or invalid column "enabled"');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     /**
@@ -184,7 +251,7 @@ final class ExperimentRowMapperTest
             Assert::true(str_contains($e->getMessage(), $needle));
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     public function wrapsCoreExceptionForInvalidName(): void
@@ -524,7 +591,7 @@ final class ExperimentRowMapperTest
             Assert::same($e->getMessage(), 'Missing column "variants" in experiment row');
         }
 
-        Assert::true(true);
+        Assert::true(actual: true);
     }
 
     /**

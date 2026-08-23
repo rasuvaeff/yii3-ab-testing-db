@@ -33,7 +33,7 @@ final class ReweightExperimentCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         try {
-            $variants = json_decode((string) $input->getArgument('variants'), true, flags: JSON_THROW_ON_ERROR);
+            $variants = json_decode((string) $input->getArgument('variants'), associative: true, flags: JSON_THROW_ON_ERROR);
 
             if (!\is_array($variants) || array_is_list($variants)) {
                 throw new \InvalidArgumentException('Variants must be a JSON object');

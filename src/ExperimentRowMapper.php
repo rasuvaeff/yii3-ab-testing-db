@@ -17,6 +17,30 @@ use Rasuvaeff\Yii3AbTesting\TargetingRuleCodecRegistry;
  */
 final readonly class ExperimentRowMapper
 {
+    /**
+     * Every boolean representation a driver is known to produce, lower-cased.
+     * Anything absent from this map is refused rather than guessed.
+     *
+     * @var array<array-key, bool>
+     */
+    private const array BOOLEAN_STRINGS = [
+        '' => false,
+        '0' => false,
+        "\x00" => false,
+        'f' => false,
+        'false' => false,
+        'n' => false,
+        'no' => false,
+        'off' => false,
+        '1' => true,
+        "\x01" => true,
+        't' => true,
+        'true' => true,
+        'y' => true,
+        'yes' => true,
+        'on' => true,
+    ];
+
     public function __construct(
         private TargetingRuleCodecRegistry $targetingCodecs = new TargetingRuleCodecRegistry(),
     ) {}
@@ -83,6 +107,18 @@ final readonly class ExperimentRowMapper
     }
 
     /**
+     * Drivers hand booleans back in a surprising number of shapes because
+     * `Query` reads without typecasting: a native `bool` (pdo_pgsql), an `int`
+     * (`BIT(1)` through mysqlnd), `'0'`/`'1'` (stringified fetches), or the raw
+     * bytes `"\x00"`/`"\x01"` (`BIT(1)` through a libmysqlclient-linked build).
+     *
+     * Every one of them is recognised explicitly, and anything else is an
+     * error. Guessing PHP truthiness instead would answer `true` for every
+     * unrecognised representation of *false* — `'f'`, `'false'`, `"\x00"` — and
+     * silently re-enable an experiment an operator had switched off. A kill
+     * switch must not fail open, so an unknown value is refused rather than
+     * interpreted.
+     *
      * @param array<array-key, mixed> $row
      */
     private function extractBool(array $row, string $column): bool
@@ -102,7 +138,14 @@ final readonly class ExperimentRowMapper
         }
 
         if (\is_string($row[$column])) {
-            return $row[$column] !== '' && $row[$column] !== '0';
+            return self::BOOLEAN_STRINGS[strtolower($row[$column])]
+                ?? throw new Exception\InvalidExperimentRowException(
+                    message: sprintf(
+                        'Unrecognised boolean value "%s" in column "%s" of experiment row',
+                        addcslashes($row[$column], "\0..\37\177"),
+                        $column,
+                    ),
+                );
         }
 
         throw new Exception\InvalidExperimentRowException(

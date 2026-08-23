@@ -67,7 +67,7 @@ final class CreateExperimentCommand extends Command
     /** @return array<string, int<0, max>> */
     private function variants(string $json): array
     {
-        $value = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+        $value = json_decode($json, associative: true, flags: JSON_THROW_ON_ERROR);
 
         if (!\is_array($value) || array_is_list($value)) {
             throw new \InvalidArgumentException('Variants must be a JSON object');

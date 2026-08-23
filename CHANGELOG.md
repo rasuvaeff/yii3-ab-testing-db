@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Adopt `rasuvaeff/rector-named-literals` and apply the named-argument rule to literal calls (development tooling only; no runtime behaviour changes).
+
+### Fixed
+
+- The bundled migrations can now be applied on MySQL 8. `M260610000000CreateAbExperimentsTable` declared `variants` as `text NOT NULL DEFAULT '{}'` and `M260619000001AddTargetingToAbExperiments` declared `targeting` as `text NULL DEFAULT NULL`; MySQL rejects a literal `DEFAULT` on a TEXT column with error 1101, so the chain aborted at the first migration and the package could not be installed on MySQL at all. Both `DEFAULT` clauses are removed — neither was reachable (the repository always writes `variants`, and `NULL` is already the implicit default of a nullable column), so the change is a no-op on PostgreSQL and SQLite.
+- `ExperimentRowMapper` no longer guesses PHP truthiness for the `enabled` column. Every string except `''` and `'0'` used to read as `true`, so an unrecognised representation of *false* — `'f'`, `'false'`, or the raw `"\x00"` a `BIT(1)` column returns through a libmysqlclient-linked PDO build — silently re-enabled a disabled experiment. Known representations are now recognised explicitly (`''`, `0`/`1`, `"\x00"`/`"\x01"`, `f`/`t`, `false`/`true`, `n`/`y`, `no`/`yes`, `off`/`on`, case-insensitive) and anything else throws `InvalidExperimentRowException` rather than failing open on a kill switch.
+- `CrossDatabaseRepositoryTest` now builds `ab_experiments` from the real migration chain instead of hand-written SQL, and asserts that a disabled experiment round-trips as disabled on both MySQL and PostgreSQL. Both defects above existed because that test bypassed the package's own migrations.
+
 ## 3.0.1 — 2026-08-04
 
 ### Fixed

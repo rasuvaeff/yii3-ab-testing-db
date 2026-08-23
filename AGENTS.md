@@ -118,6 +118,32 @@ bootstrap `pcov` inside the `composer:2` container.
   immediately `update()`s the real values. New tables must NOT copy that
   default — an INSERT that forgets a timestamp should fail rather than silently
   record 1970 (see `M260801000000`).
+- **Never put a literal `DEFAULT` on a TEXT column.** MySQL rejects it outright
+  (error 1101, `BLOB, TEXT, GEOMETRY or JSON column can't have a default
+  value`), and `yiisoft/db-mysql` renders even a parsed `DEFAULT NULL` as the
+  quoted string `'NULL'`, which fails the same way. PostgreSQL and SQLite accept
+  both, so this only ever surfaces on MySQL.
+  `M260610000000` (`variants`) and `M260619000001` (`targeting`) both carried
+  one, which meant the chain died at step 1 and the package could not be
+  installed on MySQL at all. Both were **edited in place**, against the rule
+  above, and that exception is deliberate: `yiisoft/db-migration` records only
+  the migration *name* in its history table (`Migrator::addMigrationHistory`),
+  never a checksum, so an installation that already applied a file never
+  re-reads its body; on PostgreSQL/SQLite the only divergence is a column
+  default nothing reads; and on MySQL nothing was ever applied successfully, so
+  there is no state to diverge from. A *new* migration could not have fixed it —
+  the chain never reaches one.
+- **`CrossDatabaseRepositoryTest` must build its tables from the real
+  migrations.** It used to `CREATE TABLE` by hand with its own column types,
+  which is precisely why the MySQL breakage above and the `extractBool`
+  fail-open both went unnoticed while the job was green: neither the bundled
+  DDL nor the real `BIT(1)`/`BOOLEAN` column ever ran on MySQL or PostgreSQL.
+- **`extractBool` refuses what it does not recognise.** `Query` reads without
+  typecasting, so booleans arrive as `bool`, `int`, `'0'`/`'1'`, or raw
+  `"\x00"`/`"\x01"` depending on driver and PDO build. The recognised forms are
+  listed in `ExperimentRowMapper::BOOLEAN_STRINGS`; anything else throws. Never
+  restore a truthiness fallback — it answers `true` for every unrecognised
+  representation of *false*, which makes the `enabled` kill switch fail open.
 - **All migrations take the SAME value object.** They used to hard-code their
   own defaults independently, so a configured table got CREATEd under the custom
   name while the ALTER went to `ab_experiments`.

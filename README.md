@@ -52,7 +52,7 @@ CREATE TABLE ab_experiments (
     enabled          BOOLEAN      NOT NULL DEFAULT TRUE,
     salt             VARCHAR(190) NOT NULL DEFAULT '',
     fallback_variant VARCHAR(190) NOT NULL DEFAULT '',
-    variants         TEXT         NOT NULL DEFAULT '{}',
+    variants         TEXT         NOT NULL,
     targeting        TEXT         NULL,
     state            VARCHAR(20)  NOT NULL DEFAULT 'running',
     revision         INTEGER      NOT NULL DEFAULT 1,
@@ -67,7 +67,7 @@ CREATE TABLE ab_experiments (
 | `enabled` | `BOOLEAN` | `true` | Disabled experiment returns the fallback variant |
 | `salt` | `VARCHAR(190)` | `''` | Empty string falls back to the experiment name |
 | `fallback_variant` | `VARCHAR(190)` | `''` | Must be one of the `variants` keys |
-| `variants` | `JSON`/`TEXT` | `'{}'` | JSON object `{"variant": weight}`, non-negative integer weights |
+| `variants` | `JSON`/`TEXT` | — | JSON object `{"variant": weight}`, non-negative integer weights |
 | `targeting` | `JSON`/`TEXT` nullable | `null` | Targeting rule encoded by the shared core codec registry |
 | `state` | `VARCHAR(20)` | `running` | `draft`, `running`, `paused`, `completed` or `archived` |
 | `revision` | `INTEGER` | `1` | Optimistic-lock version; increments after every write. **Required since 3.0** — without it an experiment has no configuration identity |
@@ -77,6 +77,18 @@ CREATE TABLE ab_experiments (
 A row's `variants` looks like `{"control":50,"green":50}`. The total weight must
 be greater than zero and `fallback_variant` must match one of the keys, or the row
 is rejected with `InvalidExperimentRowException`.
+
+`variants` and `targeting` carry no `DEFAULT`: MySQL rejects a literal default
+on a TEXT column with error 1101, and neither value was ever reachable — the
+repository always writes `variants`, and `NULL` is already the implicit default
+of a nullable column.
+
+`enabled` is read without driver typecasting, so it is accepted as a native
+boolean, as an integer, or as any of `''`, `0`/`1`, `"\x00"`/`"\x01"`,
+`f`/`t`, `false`/`true`, `n`/`y`, `no`/`yes`, `off`/`on` (case-insensitive).
+Anything else is rejected with `InvalidExperimentRowException` rather than
+guessed — an unrecognised representation of *false* must never read as *true*
+and quietly re-enable an experiment.
 
 ### Migration
 
