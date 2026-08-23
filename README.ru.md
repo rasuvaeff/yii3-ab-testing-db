@@ -68,7 +68,7 @@ CREATE TABLE ab_experiments (
 | `enabled` | `BOOLEAN` | `true` | Отключённый эксперимент возвращает fallback-вариант |
 | `salt` | `VARCHAR(190)` | `''` | Пустая строка откатывается к имени эксперимента |
 | `fallback_variant` | `VARCHAR(190)` | `''` | Должен совпадать с одним из ключей в `variants` |
-| `variants` | `JSON`/`TEXT` | `'{}'` | JSON-объект `{"variant": weight}`, веса — неотрицательные целые |
+| `variants` | `JSON`/`TEXT` | — | JSON-объект `{"variant": weight}`, веса — неотрицательные целые |
 | `targeting` | nullable `JSON`/`TEXT` | `null` | Targeting rule в формате общего core codec registry |
 | `state` | `VARCHAR(20)` | `running` | `draft`, `running`, `paused`, `completed` или `archived` |
 | `revision` | `INTEGER` | `1` | Версия optimistic locking; растёт после каждой записи. **Обязателен с 3.0** — без него у эксперимента нет идентичности конфигурации |

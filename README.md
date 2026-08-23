@@ -67,7 +67,7 @@ CREATE TABLE ab_experiments (
 | `enabled` | `BOOLEAN` | `true` | Disabled experiment returns the fallback variant |
 | `salt` | `VARCHAR(190)` | `''` | Empty string falls back to the experiment name |
 | `fallback_variant` | `VARCHAR(190)` | `''` | Must be one of the `variants` keys |
-| `variants` | `JSON`/`TEXT` | `'{}'` | JSON object `{"variant": weight}`, non-negative integer weights |
+| `variants` | `JSON`/`TEXT` | — | JSON object `{"variant": weight}`, non-negative integer weights |
 | `targeting` | `JSON`/`TEXT` nullable | `null` | Targeting rule encoded by the shared core codec registry |
 | `state` | `VARCHAR(20)` | `running` | `draft`, `running`, `paused`, `completed` or `archived` |
 | `revision` | `INTEGER` | `1` | Optimistic-lock version; increments after every write. **Required since 3.0** — without it an experiment has no configuration identity |
