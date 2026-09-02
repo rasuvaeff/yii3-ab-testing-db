@@ -11,8 +11,10 @@ use Rasuvaeff\Yii3AbTesting\ConversionTracker;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTesting\ExposureTracker;
 use Rasuvaeff\Yii3AbTesting\TargetingRuleCodecRegistry;
+use Rasuvaeff\Yii3AbTestingDb\AbAssignmentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
+use Rasuvaeff\Yii3AbTestingDb\DbAssignmentStore;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentRepository;
 use Testo\Assert;
@@ -46,9 +48,9 @@ final class ConfigWiringTest
         Assert::instanceOf($provider, DbExperimentProvider::class);
     }
 
-    public function bindsDbProviderWhenParamsAbsent(): void
+    public function bindsCachedProviderWhenParamsAbsent(): void
     {
-        Assert::instanceOf($this->resolveExperimentProvider([]), DbExperimentProvider::class);
+        Assert::instanceOf($this->resolveExperimentProvider([]), CachedExperimentProvider::class);
     }
 
     public function bindsCachedProviderWhenCacheEnabled(): void
@@ -99,9 +101,25 @@ final class ConfigWiringTest
         // yiisoft/config to call a duplicate
         Assert::same(array_keys($definitions), [
             AbExperimentsTableName::class,
+            AbAssignmentsTableName::class,
+            DbAssignmentStore::class,
             ExperimentProvider::class,
             ExperimentRepository::class,
         ]);
+    }
+
+    public function appliesPrefixToBothTableNames(): void
+    {
+        $definitions = $this->loadDb([
+            'rasuvaeff/yii3-ab-testing-db' => [
+                'table_prefix' => 'tenant_',
+                'table' => 'experiments',
+                'assignments_table' => 'assignments',
+            ],
+        ]);
+
+        Assert::same($definitions[AbExperimentsTableName::class]()->value, 'tenant_experiments');
+        Assert::same($definitions[AbAssignmentsTableName::class]()->value, 'tenant_assignments');
     }
 
     public function coreBindsFacadeAndStrategyButNotSwappableKeys(): void

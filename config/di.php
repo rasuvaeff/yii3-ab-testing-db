@@ -8,6 +8,8 @@ use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTesting\TargetingRuleCodecRegistry;
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
+use Rasuvaeff\Yii3AbTestingDb\AbAssignmentsTableName;
+use Rasuvaeff\Yii3AbTestingDb\DbAssignmentStore;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentCacheInvalidator;
@@ -26,6 +28,19 @@ return [
             ((string) ($config['table_prefix'] ?? '')) . ((string) ($config['table'] ?? 'ab_experiments')),
         );
     },
+    AbAssignmentsTableName::class => static function () use ($params): AbAssignmentsTableName {
+        $config = $params['rasuvaeff/yii3-ab-testing-db'] ?? [];
+
+        return new AbAssignmentsTableName(
+            ((string) ($config['table_prefix'] ?? '')) . ((string) ($config['assignments_table'] ?? 'ab_assignments')),
+        );
+    },
+    DbAssignmentStore::class => static function (
+        ConnectionInterface $db,
+        AbAssignmentsTableName $table,
+    ): DbAssignmentStore {
+        return new DbAssignmentStore(db: $db, table: $table->value);
+    },
     ExperimentProvider::class => static function (
         ConnectionInterface $db,
         ContainerInterface $container,
@@ -42,7 +57,7 @@ return [
 
         $cacheConfig = $config['cache'] ?? [];
 
-        if (($cacheConfig['enabled'] ?? false) === true) {
+        if (($cacheConfig['enabled'] ?? true) === true) {
             return new CachedExperimentProvider(
                 inner: $provider,
                 cache: $container->get(CacheInterface::class),

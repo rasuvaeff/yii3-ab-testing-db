@@ -125,11 +125,14 @@ Set the table name in params — the same value reaches the migration **and**
 'rasuvaeff/yii3-ab-testing-db' => [
     'table' => 'my_ab_experiments',
     'table_prefix' => '',   // prepended to `table`; e.g. 'rsv_' → rsv_my_ab_experiments
+    'assignments_table' => 'ab_assignments', // optional; also receives `table_prefix`
 ],
 ```
 
-All bundled migrations take the same table name, so the
-`CREATE` and the later `ALTER` can no longer target different tables.
+All bundled migrations take the configured experiment and assignments table
+names. The prefix is applied to both, so the `CREATE` and later `ALTER` steps
+cannot target different tables and assignment rows stay out of the way of an
+application's own tables.
 
 > **Upgrading an existing installation.** The operational control plane
 > (`ExperimentRepository` and the console commands) needs the `state`,
@@ -171,8 +174,9 @@ if ($ab->is(experiment: 'checkout-button', variant: 'green', subjectId: (string)
 
 ### With PSR-16 caching
 
-`getExperiments()` runs on every registry build (per request). Without caching that
-is a DB query per request — wrap the provider in `CachedExperimentProvider`:
+`getExperiments()` runs on every registry build (per request). The Yii
+config-plugin enables the 60-second `CachedExperimentProvider` by default; the
+explicit constructor below is useful when wiring the provider manually:
 
 ```php
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
@@ -186,6 +190,10 @@ $cached = new CachedExperimentProvider(
 
 $ab = new AbTesting(provider: $cached, strategy: new WeightedHashAssignmentStrategy());
 ```
+
+To disable the config-plugin decorator, set `cache.enabled` to `false` in the
+`rasuvaeff/yii3-ab-testing-db` params. Repository writes invalidate the cache
+after a successful commit.
 
 The default cache namespace includes the `DbExperimentProvider` table name, so
 providers for different tables cannot read each other's registries. When tenants
@@ -264,7 +272,7 @@ silently overwriting another operator's change.
 | `DbExperimentRepository` | Transactional DB implementation with optimistic locking |
 | `ExperimentRecord` | Runtime experiment plus state, revision and timestamps |
 | `ExperimentState` | Lifecycle enum: draft/running/paused/completed/archived |
-| `LastKnownGoodExperimentProvider` | Opt-in decorator: serves the last successful read during a source outage, logging every fallback |
+| `LastKnownGoodExperimentProvider` | Opt-in decorator: serves the last successful read during a source outage, logging every fallback; `hasLastKnownGood()` reports fallback availability and `servedStaleOnLastRead()` reports the latest read status |
 | `DbAssignmentStore` | Server-side sticky assignments, keyed by subject rather than by browser |
 | `ExperimentSchedule` | Planned run window; planning data only, never an assignment input |
 | `AbExperimentsTableName`, `AbAssignmentsTableName` | Table names as types, so migrations can be configured through `Injector` |

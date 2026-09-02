@@ -110,7 +110,17 @@ final readonly class DbExperimentRepository implements ExperimentRepository
                 );
             }
 
-            return $this->create(experiment: $experiment, state: $state);
+            try {
+                return $this->create(experiment: $experiment, state: $state);
+            } catch (Exception\ExperimentAlreadyExistsException $e) {
+                // Another writer may have inserted the row between find() and
+                // create(). Re-read it and take the update branch.
+                $current = $this->find($experiment->name);
+
+                if (!$current instanceof ExperimentRecord) {
+                    throw $e;
+                }
+            }
         }
 
         $state ??= $experiment->enabled ? ExperimentState::Running : ExperimentState::Paused;
