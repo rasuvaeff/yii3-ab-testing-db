@@ -257,10 +257,18 @@ final readonly class ExperimentRowMapper
      */
     private function extractSchedule(array $row): ExperimentSchedule
     {
-        return new ExperimentSchedule(
-            startsAt: $this->extractNullableDateTime(row: $row, column: 'starts_at'),
-            endsAt: $this->extractNullableDateTime(row: $row, column: 'ends_at'),
-        );
+        try {
+            return new ExperimentSchedule(
+                startsAt: $this->extractNullableDateTime(row: $row, column: 'starts_at'),
+                endsAt: $this->extractNullableDateTime(row: $row, column: 'ends_at'),
+            );
+        } catch (\InvalidArgumentException $e) {
+            throw new Exception\InvalidExperimentRowException(
+                message: sprintf('Invalid schedule in experiment row: %s', $e->getMessage()),
+                code: $e->getCode(),
+                previous: $e,
+            );
+        }
     }
 
     /** @param array<array-key, mixed> $row */

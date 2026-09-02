@@ -31,6 +31,8 @@ final class LastKnownGoodExperimentProvider implements ExperimentProvider
     /** @var array<string, Experiment>|null */
     private ?array $lastKnownGood = null;
 
+    private bool $servedStale = false;
+
     public function __construct(
         private readonly ExperimentProvider $provider,
         private readonly LoggerInterface $logger,
@@ -49,6 +51,8 @@ final class LastKnownGoodExperimentProvider implements ExperimentProvider
                 throw $e;
             }
 
+            $this->servedStale = true;
+
             $this->logger->error(
                 'Serving last known good A/B experiments: the source is unavailable',
                 [
@@ -62,16 +66,20 @@ final class LastKnownGoodExperimentProvider implements ExperimentProvider
         }
 
         $this->lastKnownGood = $experiments;
+        $this->servedStale = false;
 
         return $experiments;
     }
 
-    /**
-     * Whether the last read fell back to the cached set. Expose it through a
-     * health check so a stale registry is visible without reading logs.
-     */
+    /** Whether a successful read exists to use as a fallback. */
     public function hasLastKnownGood(): bool
     {
         return $this->lastKnownGood !== null;
+    }
+
+    /** Whether the most recent read served stale definitions. */
+    public function servedStaleOnLastRead(): bool
+    {
+        return $this->servedStale;
     }
 }

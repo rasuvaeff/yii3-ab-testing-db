@@ -126,11 +126,14 @@ return [
 'rasuvaeff/yii3-ab-testing-db' => [
     'table' => 'my_ab_experiments',
     'table_prefix' => '',   // добавляется перед `table`; например 'rsv_' → rsv_my_ab_experiments
+    'assignments_table' => 'ab_assignments', // необязательно; также получает `table_prefix`
 ],
 ```
 
-Все поставляемые миграции получают одно и то же имя таблицы, поэтому `CREATE` и
-последующий `ALTER` больше не могут разойтись по разным таблицам.
+Все поставляемые миграции получают настроенные имена таблиц экспериментов и
+назначений. Префикс применяется к обеим таблицам, поэтому `CREATE` и
+последующий `ALTER` не разойдутся, а таблица назначений не пересечётся с
+таблицами приложения.
 
 > **Обновление существующей установки.** Operational control plane
 > (`ExperimentRepository` и console-команды) требует колонок `state`,
@@ -173,8 +176,8 @@ if ($ab->is(experiment: 'checkout-button', variant: 'green', subjectId: (string)
 ### С PSR-16 кэшированием
 
 `getExperiments()` выполняется при каждой сборке реестра (на каждый запрос).
-Без кэширования это DB-запрос на каждый запрос — оберните провайдер в
-`CachedExperimentProvider`:
+Yii config-plugin по умолчанию добавляет `CachedExperimentProvider` с TTL 60
+секунд; явный конструктор ниже нужен при ручной проводке провайдера:
 
 ```php
 use Rasuvaeff\Yii3AbTestingDb\CachedExperimentProvider;
@@ -188,6 +191,10 @@ $cached = new CachedExperimentProvider(
 
 $ab = new AbTesting(provider: $cached, strategy: new WeightedHashAssignmentStrategy());
 ```
+
+Чтобы отключить декоратор config-plugin, задайте `cache.enabled` равным `false`
+в params `rasuvaeff/yii3-ab-testing-db`. Записи через repository инвалидируют
+кэш после успешного commit.
 
 Default cache namespace включает имя таблицы `DbExperimentProvider`, поэтому
 провайдеры разных таблиц не читают реестры друг друга. Если tenant-ы или
@@ -267,7 +274,7 @@ Revision обязательна для мутирующих команд, что
 | `DbExperimentRepository` | Транзакционная DB-реализация с optimistic locking |
 | `ExperimentRecord` | Runtime experiment вместе со state, revision и timestamps |
 | `ExperimentState` | Lifecycle enum: draft/running/paused/completed/archived |
-| `LastKnownGoodExperimentProvider` | Opt-in декоратор: отдаёт последнее удачное чтение во время недоступности источника, логируя каждый fallback |
+| `LastKnownGoodExperimentProvider` | Opt-in декоратор: отдаёт последнее удачное чтение при недоступности источника и логирует каждый fallback; `hasLastKnownGood()` показывает наличие резерва, `servedStaleOnLastRead()` — статус последнего чтения |
 | `DbAssignmentStore` | Серверное закрепление варианта, ключ — субъект, а не браузер |
 | `ExperimentSchedule` | Планируемое окно запуска; только планирование, на назначение не влияет |
 | `AbExperimentsTableName`, `AbAssignmentsTableName` | Имена таблиц как типы, чтобы миграции настраивались через `Injector` |

@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.2.0 — 2026-09-02
+
+### Added
+
+- Add `LastKnownGoodExperimentProvider::servedStaleOnLastRead()` so health
+  checks can distinguish fallback availability from an actually stale read.
+- Add configurable `assignments_table` and `table_prefix` wiring for
+  `AbAssignmentsTableName` and `DbAssignmentStore`.
+
+### Changed
+
+- Enable the Yii config-plugin's 60-second experiment cache by default; set
+  `cache.enabled` to `false` to retain direct DB reads.
+
+### Fixed
+
+- Wrap invalid schedule windows in `InvalidExperimentRowException`.
+- Retry the update branch when a concurrent `upsert()` inserts the experiment
+  between the existence check and create.
+
 ## 3.1.0 — 2026-08-23
 
 ### Changed

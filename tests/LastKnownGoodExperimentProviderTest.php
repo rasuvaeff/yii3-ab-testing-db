@@ -99,6 +99,16 @@ final class LastKnownGoodExperimentProviderTest
         Assert::false($provider->hasLastKnownGood());
         $provider->getExperiments();
         Assert::true($provider->hasLastKnownGood());
+        Assert::false($provider->servedStaleOnLastRead());
+
+        $provider = new LastKnownGoodExperimentProvider(
+            $this->provider([$this->experiment()], failAfter: 1),
+            $this->logger,
+        );
+        $provider->getExperiments();
+        $provider->getExperiments();
+
+        Assert::true($provider->servedStaleOnLastRead());
     }
 
     public function aLaterSuccessReplacesTheCachedSet(): void

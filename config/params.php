@@ -27,8 +27,9 @@ return [
         // prepended to `table`; set it once to keep every rasuvaeff table out
         // of the way of your application's own
         'table_prefix' => '',
+        'assignments_table' => 'ab_assignments',
         'cache' => [
-            'enabled' => false,
+            'enabled' => true,
             'ttl' => 60,
             // null derives the namespace from the DB table; set a stable value
             // to isolate tenants/connections that intentionally share a table name

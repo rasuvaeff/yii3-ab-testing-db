@@ -13,10 +13,11 @@ composer require rasuvaeff/yii3-ab-testing-db
 - `variants` column is a JSON object `{"variant":weight}`; weights are non-negative integers; `fallback_variant` must be one of the keys.
 - Empty `salt` falls back to the experiment `name`.
 - Invalid row shape / malformed variants or recursively malformed targeting / invalid experiment (bad name, unknown fallback, zero total weight) throws `InvalidExperimentRowException` (never silently skips; raw TypeError/core errors do not leak).
-- `CachedExperimentProvider` validates the full `array<string, Experiment>` registry; poisoned arrays and cache failures fall back to inner. Its PSR-16 key is SHA-256 namespaced by DB table by default; pass `namespace` for tenant/connection isolation when sources share a table name.
+- `CachedExperimentProvider` validates the full `array<string, Experiment>` registry; poisoned arrays and cache failures fall back to inner. Its PSR-16 key is SHA-256 namespaced by DB table by default; pass `namespace` for tenant/connection isolation when sources share a table name. The Yii config-plugin enables it by default (`cache.enabled=false` disables it; TTL defaults to 60 seconds).
 - Assignment hashing, fallback, forced/disabled logic — all remain in core.
 - Ships namespaced `yiisoft/db-migration` migrations under `Rasuvaeff\Yii3AbTestingDb\Migration\`; register with `setSourceNamespaces()`.
-- Table name flows params (`table_prefix` + `table`) => `AbExperimentsTableName` (VO) => provider, repository and every migration. Configuring a migration through the container does NOT work: `Injector::make()` resolves by type, not by class-id.
+- Table names flow params (`table_prefix` + `table` / `assignments_table`) => `AbExperimentsTableName` / `AbAssignmentsTableName` (VOs) => providers, repository, assignment store and migrations. Configuring a migration through the container does NOT work: `Injector::make()` resolves by type, not by class-id.
+- `LastKnownGoodExperimentProvider::hasLastKnownGood()` reports whether a fallback exists; `servedStaleOnLastRead()` reports whether the latest read used it.
 - Binds `ExperimentProvider` in `config/di.php` (one source only — not the `AbTesting` facade).
 - Binds `ExperimentRepository`; mutations use optimistic revision checks and invalidate cache after commit.
 - Runtime DB experiments expose `configurationId` as `db:<revision>`.

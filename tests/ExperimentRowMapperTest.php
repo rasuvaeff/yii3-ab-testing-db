@@ -708,6 +708,20 @@ final class ExperimentRowMapperTest
         Assert::null($record->schedule->endsAt);
     }
 
+    public function rejectsAnInvalidScheduleAsAnInvalidRow(): void
+    {
+        Expect::exception(InvalidExperimentRowException::class)
+            ->withMessage('Invalid schedule in experiment row: Experiment must end after it starts, got 2026-08-12T00:00:00+00:00 to 2026-08-05T00:00:00+00:00');
+
+        (new ExperimentRowMapper())->mapRecord($this->row() + [
+            'state' => 'running',
+            'created_at' => '2026-08-01 10:00:00.000000',
+            'updated_at' => '2026-08-01 10:00:00.000000',
+            'starts_at' => '2026-08-12 00:00:00.000000',
+            'ends_at' => '2026-08-05 00:00:00.000000',
+        ]);
+    }
+
     private function row(
         string $name = 'exp',
         bool|int|string $enabled = true,
