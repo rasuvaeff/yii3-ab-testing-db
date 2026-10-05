@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
+use Rasuvaeff\Understudy\Understudy;
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTesting\ExperimentProvider;
 use Rasuvaeff\Yii3AbTestingDb\LastKnownGoodExperimentProvider;
@@ -14,6 +15,8 @@ use Testo\Expect;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
 use Yiisoft\Test\Support\Log\SimpleLogger;
+
+use function Rasuvaeff\Understudy\when;
 
 #[Test]
 #[Covers(LastKnownGoodExperimentProvider::class)]
@@ -113,25 +116,18 @@ final class LastKnownGoodExperimentProviderTest
 
     public function aLaterSuccessReplacesTheCachedSet(): void
     {
-        $inner = new class implements ExperimentProvider {
-            public int $calls = 0;
+        $provider = Understudy::for(ExperimentProvider::class);
+        when(fn() => $provider->getExperiments())->returns(
+            ['checkout' => self::makeExperiment('checkout')],
+            ['pricing' => self::makeExperiment('pricing')],
+        );
 
-            #[\Override]
-            public function getExperiments(): array
-            {
-                ++$this->calls;
+        $decorated = new LastKnownGoodExperimentProvider($provider, $this->logger);
 
-                return $this->calls === 1
-                    ? ['checkout' => LastKnownGoodExperimentProviderTest::makeExperiment('checkout')]
-                    : ['pricing' => LastKnownGoodExperimentProviderTest::makeExperiment('pricing')];
-            }
-        };
-        $provider = new LastKnownGoodExperimentProvider($inner, $this->logger);
+        $decorated->getExperiments();
+        $decorated->getExperiments();
 
-        $provider->getExperiments();
-        $provider->getExperiments();
-
-        Assert::same(array_keys($provider->getExperiments()), ['pricing']);
+        Assert::same(array_keys($decorated->getExperiments()), ['pricing']);
     }
 
     /**
@@ -182,26 +178,19 @@ final class LastKnownGoodExperimentProviderTest
             $indexed[$experiment->name] = $experiment;
         }
 
-        return new class ($indexed, $failAfter) implements ExperimentProvider {
-            private int $calls = 0;
+        $provider = Understudy::for(ExperimentProvider::class);
 
-            /** @param array<string, Experiment> $experiments */
-            public function __construct(
-                private readonly array $experiments,
-                private readonly ?int $failAfter,
-            ) {}
+        if ($failAfter === null) {
+            when(fn() => $provider->getExperiments())->returns($indexed);
+        } elseif ($failAfter === 0) {
+            when(fn() => $provider->getExperiments())->throws(new RuntimeException('source is down'));
+        } else {
+            when(fn() => $provider->getExperiments())
+                ->returns(...array_fill(0, $failAfter, $indexed))
+                ->then()
+                ->throws(new RuntimeException('source is down'));
+        }
 
-            #[\Override]
-            public function getExperiments(): array
-            {
-                ++$this->calls;
-
-                if ($this->failAfter !== null && $this->calls > $this->failAfter) {
-                    throw new RuntimeException('source is down');
-                }
-
-                return $this->experiments;
-            }
-        };
+        return $provider;
     }
 }
