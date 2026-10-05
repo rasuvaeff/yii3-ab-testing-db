@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
+use Rasuvaeff\Understudy\Understudy;
 use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
@@ -23,6 +24,8 @@ use Yiisoft\Db\Sqlite\Connection as SqliteConnection;
 use Yiisoft\Db\Sqlite\Driver as SqliteDriver;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 
+use function Rasuvaeff\Understudy\verify;
+
 #[Test]
 #[Covers(DbExperimentRepository::class)]
 #[Covers(RevisionConflictException::class)]
@@ -32,7 +35,7 @@ final class DbExperimentRepositoryTest
 {
     private ConnectionInterface $db;
 
-    private RecordingInvalidator $invalidator;
+    private ExperimentCacheInvalidator $invalidator;
 
     private DbExperimentRepository $repository;
 
@@ -58,7 +61,7 @@ final class DbExperimentRepositoryTest
                 updated_at VARCHAR(32) NOT NULL
             )
         ')->execute();
-        $this->invalidator = new RecordingInvalidator();
+        $this->invalidator = Understudy::for(ExperimentCacheInvalidator::class);
         $this->repository = new DbExperimentRepository(db: $this->db, cacheInvalidator: $this->invalidator);
     }
 
@@ -79,7 +82,7 @@ final class DbExperimentRepositoryTest
         Assert::same($record->revision, 1);
         Assert::same($record->experiment->configurationId, 'db:1');
         Assert::false($record->experiment->enabled);
-        Assert::same($this->invalidator->calls, 1);
+        verify(fn() => $this->invalidator->invalidate(), times: 1);
     }
 
     public function lifecycleAndWeightsIncrementRevision(): void
@@ -96,7 +99,7 @@ final class DbExperimentRepositoryTest
         Assert::false($archived->experiment->enabled);
         Assert::same($archived->revision, 4);
         Assert::same($archived->experiment->configurationId, 'db:4');
-        Assert::same($this->invalidator->calls, 4);
+        verify(fn() => $this->invalidator->invalidate(), times: 4);
     }
 
     public function rejectsStaleRevisionWithoutInvalidatingCache(): void
@@ -110,7 +113,7 @@ final class DbExperimentRepositoryTest
         }
 
         Assert::same($this->repository->get('checkout')->revision, 1);
-        Assert::same($this->invalidator->calls, 1);
+        verify(fn() => $this->invalidator->invalidate(), times: 1);
     }
 
     public function roundTripsTargetingThroughSharedCodecRegistry(): void
@@ -204,16 +207,5 @@ final class DbExperimentRepositoryTest
             fallbackVariant: 'control',
             variants: ['control' => 50, 'green' => 50],
         );
-    }
-}
-
-final class RecordingInvalidator implements ExperimentCacheInvalidator
-{
-    public int $calls = 0;
-
-    #[\Override]
-    public function invalidate(): void
-    {
-        ++$this->calls;
     }
 }
