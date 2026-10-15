@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- `llms.txt` now covers the whole public API: `DbExperimentRepository`,
+  `ExperimentAlreadyExistsException`, `ExperimentCacheInvalidator`,
+  `ExperimentSchedule`, the six console command classes, `DbAssignmentStore`
+  and the migration classes.
+- Link the family documentation site instead of a `vendor/` path that the
+  core's `export-ignore` removes.
+
 ## 3.2.0 — 2026-09-02
 
 ### Added
