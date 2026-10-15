@@ -101,11 +101,58 @@ $repository->archive('checkout', $record->revision);
 
 Methods: `list`, `get`, `create`, `upsert`, `enable`, `disable`, `reweight`,
 `archive`. Every read and write returns an `ExperimentRecord` (`experiment`,
-`state`, `revision`, `createdAt`, `updatedAt`); pass `$record->revision` back as
-the expected revision. Stale writes throw `RevisionConflictException`; missing
-records throw `ExperimentNotFoundException`. Console commands: `ab-testing:validate`,
-`ab-testing:list`, `ab-testing:create`, `ab-testing:enable`,
-`ab-testing:disable`, `ab-testing:reweight`.
+`state`, `revision`, `createdAt`, `updatedAt`, `schedule`); pass
+`$record->revision` back as the expected revision. Stale writes throw
+`RevisionConflictException`; missing records throw `ExperimentNotFoundException`;
+`create()` of an existing name throws `ExperimentAlreadyExistsException`.
+
+`DbExperimentRepository` is the implementation the config-plugin binds. Its
+optional `cacheInvalidator` (`ExperimentCacheInvalidator`, implemented by
+`CachedExperimentProvider`) is called only after a write commits.
+
+`ExperimentSchedule` (`startsAt`, `endsAt`, `isActiveAt()`, `open()`) is the
+planned run window — planning data only, never an assignment input: the served
+variant must not depend on wall-clock time.
+
+### Console commands
+
+| Command | Class |
+|---|---|
+| `ab-testing:validate` | `ValidateExperimentsCommand` |
+| `ab-testing:list` | `ListExperimentsCommand` |
+| `ab-testing:create` | `CreateExperimentCommand` |
+| `ab-testing:enable` | `EnableExperimentCommand` |
+| `ab-testing:disable` | `DisableExperimentCommand` |
+| `ab-testing:reweight` | `ReweightExperimentCommand` |
+
+Mutating commands require the expected revision argument.
+
+### DbAssignmentStore
+
+```php
+use Rasuvaeff\Yii3AbTestingDb\DbAssignmentStore;
+use Rasuvaeff\Yii3AbTestingWeb\StickyAssignmentResolver;
+
+$store = new DbAssignmentStore(db: $connection);           // table 'ab_assignments'
+$resolver = new StickyAssignmentResolver(resolver: $ab, store: $store);
+
+$store->forget($subjectId);          // erase a subject across experiments; returns rows deleted
+$store->deleteExperiment('checkout'); // drop every pin of one experiment
+```
+
+Server-side sticky assignments keyed by `(experiment, subject_id)` — survive
+cleared cookies and device switches. Implements core's
+`ConfigurationAwareAssignmentStore`: a pin is reused only for the same
+`configurationId`, so a reweight drops stale pins.
+
+### Migrations
+
+Namespace `Rasuvaeff\Yii3AbTestingDb\Migration`, registered through
+`setSourceNamespaces()` (needs `yiisoft/db-migration` ^2.1):
+`M260610000000CreateAbExperimentsTable`, `M260619000001AddTargetingToAbExperiments`,
+`M260731000000AddOperationalFieldsToAbExperiments`,
+`M260801000000CreateAbAssignmentsTable`, `M260801000001AddScheduleToAbExperiments`.
+Table names come from `AbExperimentsTableName` / `AbAssignmentsTableName`.
 
 ### Usage with AbTesting
 
