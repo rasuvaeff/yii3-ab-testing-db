@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
+use Rasuvaeff\Understudy\Arg;
+use Rasuvaeff\Understudy\Invocation;
+use Rasuvaeff\Understudy\Understudy;
 use Rasuvaeff\Yii3AbTestingDb\AbAssignmentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\AbExperimentsTableName;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentProvider;
@@ -18,12 +21,16 @@ use Testo\Lifecycle\AfterTest;
 use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
 use Yiisoft\Db\Cache\SchemaCache;
+use Yiisoft\Db\Command\CommandInterface;
 use Yiisoft\Db\Connection\ConnectionInterface;
 use Yiisoft\Db\Migration\Informer\NullMigrationInformer;
 use Yiisoft\Db\Migration\MigrationBuilder;
+use Yiisoft\Db\Migration\RevertibleMigrationInterface;
 use Yiisoft\Db\Sqlite\Connection as SqliteConnection;
 use Yiisoft\Db\Sqlite\Driver as SqliteDriver;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
+
+use function Rasuvaeff\Understudy\when;
 
 #[Test]
 #[Covers(M260610000000CreateAbExperimentsTable::class)]
@@ -230,4 +237,43 @@ final class MigrationTest
 
         return $row;
     }
+
+    public function downMigrationsDropTheColumnsTheirUpAdded(): void
+    {
+        // SQLite cannot drop columns through yiisoft/db, so the statements are
+        // recorded on a command double instead of executed.
+        $table = new AbExperimentsTableName('custom_experiments');
+
+        Assert::same($this->droppedBy(new M260619000001AddTargetingToAbExperiments($table)), [
+            ['custom_experiments', 'targeting'],
+        ]);
+        Assert::same($this->droppedBy(new M260731000000AddOperationalFieldsToAbExperiments($table)), [
+            ['custom_experiments', 'updated_at'],
+            ['custom_experiments', 'created_at'],
+            ['custom_experiments', 'revision'],
+            ['custom_experiments', 'state'],
+        ]);
+        Assert::same($this->droppedBy(new M260801000001AddScheduleToAbExperiments($table)), [
+            ['custom_experiments', 'ends_at'],
+            ['custom_experiments', 'starts_at'],
+        ]);
+    }
+
+    /**
+     * @return list<array{mixed, mixed}> the (table, column) pairs the migration's down() dropped, in order
+     */
+    private function droppedBy(RevertibleMigrationInterface $migration): array
+    {
+        $db = Understudy::for(ConnectionInterface::class);
+        $command = Understudy::for(CommandInterface::class);
+        when(fn() => $db->createCommand())->returns($command);
+
+        $migration->down(new MigrationBuilder($db, new NullMigrationInformer()));
+
+        return array_map(
+            static fn(Invocation $call): array => [$call->args[0], $call->args[1]],
+            Understudy::calls(fn() => $command->dropColumn(Arg::any(), Arg::any())),
+        );
+    }
+
 }

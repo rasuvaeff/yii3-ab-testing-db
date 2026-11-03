@@ -754,4 +754,29 @@ final class ExperimentRowMapperTest
 
         return $row;
     }
+
+    public function rejectsAnUnparsableTimestampWithTheColumnName(): void
+    {
+        try {
+            (new ExperimentRowMapper())->mapRecord($this->row() + [
+                'state' => 'running',
+                'created_at' => 'not a timestamp',
+                'updated_at' => '2026-08-01 10:00:00.000000',
+            ]);
+            Assert::fail('Expected InvalidExperimentRowException');
+        } catch (InvalidExperimentRowException $e) {
+            Assert::same($e->getMessage(), 'Invalid datetime column "created_at" in experiment row');
+            Assert::instanceOf($e->getPrevious(), \Exception::class);
+            Assert::same($e->getCode(), $e->getPrevious()->getCode());
+        }
+
+        Expect::exception(InvalidExperimentRowException::class)
+            ->withMessage('Invalid datetime column "updated_at" in experiment row');
+
+        (new ExperimentRowMapper())->mapRecord($this->row() + [
+            'state' => 'running',
+            'created_at' => '2026-08-01 10:00:00.000000',
+            'updated_at' => 'yesterday-ish',
+        ]);
+    }
 }

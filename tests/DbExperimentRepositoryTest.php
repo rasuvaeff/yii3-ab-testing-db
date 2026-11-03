@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Rasuvaeff\Yii3AbTestingDb\Tests;
 
+use Rasuvaeff\Understudy\Arg;
+use Rasuvaeff\Understudy\Invocation;
 use Rasuvaeff\Understudy\Understudy;
 use Rasuvaeff\Yii3AbTesting\AttributeTargetingRule;
 use Rasuvaeff\Yii3AbTesting\Experiment;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\Exception\ExperimentAlreadyExistsException;
 use Rasuvaeff\Yii3AbTestingDb\Exception\ExperimentNotFoundException;
 use Rasuvaeff\Yii3AbTestingDb\Exception\RevisionConflictException;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentCacheInvalidator;
@@ -20,11 +23,13 @@ use Testo\Lifecycle\BeforeTest;
 use Testo\Test;
 use Yiisoft\Db\Cache\SchemaCache;
 use Yiisoft\Db\Connection\ConnectionInterface;
+use Yiisoft\Db\Exception\IntegrityException;
 use Yiisoft\Db\Sqlite\Connection as SqliteConnection;
 use Yiisoft\Db\Sqlite\Driver as SqliteDriver;
 use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 
 use function Rasuvaeff\Understudy\verify;
+use function Rasuvaeff\Understudy\when;
 
 #[Test]
 #[Covers(DbExperimentRepository::class)]
@@ -207,5 +212,219 @@ final class DbExperimentRepositoryTest
             fallbackVariant: 'control',
             variants: ['control' => 50, 'green' => 50],
         );
+    }
+
+    public function createRejectsADuplicateName(): void
+    {
+        $this->repository->create($this->experiment(enabled: true));
+
+        try {
+            $this->repository->create($this->experiment(enabled: false));
+            Assert::fail('Expected ExperimentAlreadyExistsException');
+        } catch (ExperimentAlreadyExistsException $e) {
+            Assert::same($e->getMessage(), 'Experiment "checkout" already exists');
+            Assert::null($e->getPrevious());
+        }
+
+        Assert::same($this->repository->get('checkout')->revision, 1);
+        Assert::true($this->repository->get('checkout')->experiment->enabled);
+    }
+
+    public function createTranslatesAnIntegrityViolationFromTheInsert(): void
+    {
+        $violation = new IntegrityException('UNIQUE constraint failed');
+        $repository = $this->repositoryWhoseTransactionAnswers(
+            static function () use ($violation): never {
+                throw $violation;
+            },
+        );
+
+        try {
+            $repository->create($this->experiment(enabled: true));
+            Assert::fail('Expected ExperimentAlreadyExistsException');
+        } catch (ExperimentAlreadyExistsException $e) {
+            Assert::same($e->getMessage(), 'Experiment "checkout" already exists');
+            Assert::same($e->getPrevious(), $violation);
+        }
+    }
+
+    public function upsertCreatesAMissingExperiment(): void
+    {
+        $record = $this->repository->upsert($this->experiment(enabled: true));
+
+        Assert::same($record->revision, 1);
+        Assert::same($record->state, ExperimentState::Running);
+    }
+
+    public function upsertUpdatesAnExistingExperimentAndBumpsTheRevision(): void
+    {
+        $this->repository->create($this->experiment(enabled: true));
+
+        $record = $this->repository->upsert(new Experiment(
+            name: 'checkout',
+            enabled: false,
+            salt: 'checkout-v2',
+            fallbackVariant: 'control',
+            variants: ['control' => 20, 'green' => 80],
+        ));
+
+        Assert::same($record->revision, 2);
+        Assert::same($record->state, ExperimentState::Paused);
+        Assert::same($record->experiment->salt, 'checkout-v2');
+        Assert::same($record->experiment->variants, ['control' => 20, 'green' => 80]);
+    }
+
+    public function upsertHonoursAnExplicitStateAndExpectedRevision(): void
+    {
+        $this->repository->create($this->experiment(enabled: true));
+        $this->repository->disable('checkout', 1);
+
+        $record = $this->repository->upsert(
+            experiment: $this->experiment(enabled: true),
+            expectedRevision: 2,
+            state: ExperimentState::Archived,
+        );
+
+        Assert::same($record->state, ExperimentState::Archived);
+        Assert::same($record->revision, 3);
+
+        try {
+            $this->repository->upsert(experiment: $this->experiment(enabled: true), expectedRevision: 1);
+            Assert::fail('Expected RevisionConflictException');
+        } catch (RevisionConflictException) {
+        }
+
+        Assert::same($this->repository->get('checkout')->revision, 3);
+    }
+
+    public function upsertWithAnExpectedRevisionRequiresTheExperimentToExist(): void
+    {
+        try {
+            $this->repository->upsert(experiment: $this->experiment(enabled: true), expectedRevision: 1);
+            Assert::fail('Expected ExperimentNotFoundException');
+        } catch (ExperimentNotFoundException $e) {
+            Assert::same($e->getMessage(), 'Experiment "checkout" does not exist');
+        }
+
+        Assert::same($this->repository->list(), []);
+    }
+
+    public function upsertTakesTheUpdateBranchWhenAnotherWriterWonTheInsertRace(): void
+    {
+        $raced = new DbExperimentRepository(db: $this->db);
+        $repository = $this->repositoryWhoseTransactionAnswers(
+            function () use ($raced): never {
+                $raced->create($this->experiment(enabled: true));
+
+                throw new IntegrityException('UNIQUE constraint failed');
+            },
+        );
+
+        $record = $repository->upsert(new Experiment(
+            name: 'checkout',
+            enabled: true,
+            salt: 'checkout-v1',
+            fallbackVariant: 'control',
+            variants: ['control' => 10, 'green' => 90],
+        ));
+
+        Assert::same($record->revision, 2);
+        Assert::same($record->experiment->variants, ['control' => 10, 'green' => 90]);
+    }
+
+    public function upsertRethrowsWhenTheRacedRowIsNotThere(): void
+    {
+        $repository = $this->repositoryWhoseTransactionAnswers(
+            static function (): never {
+                throw new IntegrityException('UNIQUE constraint failed');
+            },
+        );
+
+        try {
+            $repository->upsert($this->experiment(enabled: true));
+            Assert::fail('Expected ExperimentAlreadyExistsException');
+        } catch (ExperimentAlreadyExistsException $e) {
+            Assert::same($e->getMessage(), 'Experiment "checkout" already exists');
+        }
+
+        Assert::same($this->repository->list(), []);
+    }
+
+    public function rejectsAnExpectedRevisionBelowOne(): void
+    {
+        $this->repository->create($this->experiment(enabled: true));
+
+        foreach ([0, -1] as $revision) {
+            try {
+                $this->repository->disable('checkout', $revision);
+                Assert::fail('Expected InvalidArgumentException');
+            } catch (\InvalidArgumentException $e) {
+                Assert::same($e->getMessage(), 'Expected revision must be at least 1');
+            }
+        }
+
+        Assert::same($this->repository->get('checkout')->revision, 1);
+    }
+
+    public function updateReportsNotFoundWhenTheRowVanishesBeforeTheWrite(): void
+    {
+        $this->repository->create($this->experiment(enabled: true));
+        $repository = $this->repositoryWhoseTransactionAnswers(
+            function (Invocation $call): mixed {
+                $this->db->createCommand()->delete('ab_experiments', ['name' => 'checkout'])->execute();
+
+                return $call->callOriginal();
+            },
+        );
+
+        try {
+            $repository->disable('checkout', 1);
+            Assert::fail('Expected ExperimentNotFoundException');
+        } catch (ExperimentNotFoundException $e) {
+            Assert::same($e->getMessage(), 'Experiment "checkout" does not exist');
+        }
+    }
+
+    public function aRevisionBelowOneIsRejectedByTheRecord(): void
+    {
+        $experiment = $this->experiment(enabled: true);
+        $now = new \DateTimeImmutable('2026-08-01 10:00:00', new \DateTimeZone('UTC'));
+
+        try {
+            new ExperimentRecord(
+                experiment: $experiment,
+                state: ExperimentState::Running,
+                revision: 0,
+                createdAt: $now,
+                updatedAt: $now,
+            );
+            Assert::fail('Expected InvalidArgumentException');
+        } catch (\InvalidArgumentException $e) {
+            Assert::same($e->getMessage(), 'Experiment revision must be at least 1');
+        }
+    }
+
+    /**
+     * A repository over the same SQLite connection whose transaction() runs the
+     * given answer for its first call instead of the closure it was handed (the answer may call
+     * the original through the Invocation).
+     */
+    private function repositoryWhoseTransactionAnswers(callable $answer): DbExperimentRepository
+    {
+        $proxy = Understudy::delegate(ConnectionInterface::class, $this->db);
+        $first = true;
+        when(fn() => $proxy->transaction(Arg::any()))->answers(
+            static function (Invocation $call) use ($answer, &$first): mixed {
+                if (!$first) {
+                    return $call->callOriginal();
+                }
+
+                $first = false;
+
+                return $answer($call);
+            },
+        );
+
+        return new DbExperimentRepository(db: $proxy);
     }
 }
