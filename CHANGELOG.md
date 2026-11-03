@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `composer mutation` now runs Infection with `--with-uncovered`, so code the tests execute without naming it in `#[Covers]` is mutated and counted (overall MSI was 87% when measured this way, now 99.7% against `minMsi` 99). Added `DbExperimentProviderTest` (SQLite, previously covered only by the Integration suite), repository tests for duplicate create, the insert race, `upsert` and the update guards (a `ConnectionInterface` double stands in for the race), `down()` migration tests, cache-key derivation tests for `CachedExperimentProvider`, console failure-path tests, and `#[Covers]` on `ConsoleCommandsTest`. `infection.json5` gained the template's signature-default ignore regex and disabled `PublicVisibility`/`ProtectedVisibility`. No `src/` changes.
+
 ## 3.2.1 — 2026-10-15
 
 ### Documentation

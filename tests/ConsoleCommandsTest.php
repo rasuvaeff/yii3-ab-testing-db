@@ -11,6 +11,8 @@ use Rasuvaeff\Yii3AbTestingDb\Console\ListExperimentsCommand;
 use Rasuvaeff\Yii3AbTestingDb\Console\ReweightExperimentCommand;
 use Rasuvaeff\Yii3AbTestingDb\Console\ValidateExperimentsCommand;
 use Rasuvaeff\Yii3AbTestingDb\DbExperimentRepository;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentRecord;
+use Rasuvaeff\Yii3AbTestingDb\ExperimentRowMapper;
 use Rasuvaeff\Yii3AbTestingDb\ExperimentState;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Formatter\OutputFormatter;
@@ -34,6 +36,10 @@ use Yiisoft\Test\Support\SimpleCache\MemorySimpleCache;
 #[Covers(ListExperimentsCommand::class)]
 #[Covers(ReweightExperimentCommand::class)]
 #[Covers(ValidateExperimentsCommand::class)]
+#[Covers(DbExperimentRepository::class)]
+#[Covers(ExperimentRowMapper::class)]
+#[Covers(ExperimentRecord::class)]
+#[Covers(ExperimentState::class)]
 final class ConsoleCommandsTest
 {
     private ConnectionInterface $db;
@@ -328,5 +334,36 @@ final class ConsoleCommandsTest
             'fallback' => 'control',
             '--salt' => 'checkout-v1',
         ]), Command::SUCCESS);
+    }
+
+    public function enableReportsAStaleRevisionInTheErrorStyle(): void
+    {
+        $this->create();
+        $enable = new CommandTester(new EnableExperimentCommand($this->repository));
+
+        Assert::same(
+            $enable->execute(['name' => 'checkout', 'revision' => '9'], ['decorated' => true]),
+            Command::FAILURE,
+        );
+        Assert::string($enable->getDisplay())
+            ->contains($this->styledError('Experiment "checkout" revision is not 9'));
+        Assert::same($this->repository->get('checkout')->revision, 1);
+    }
+
+    public function validateReportsAnInvalidStoredRowInTheErrorStyle(): void
+    {
+        $this->db->createCommand(sql: "
+            INSERT INTO ab_experiments
+                (name, enabled, salt, fallback_variant, variants, state, revision, created_at, updated_at)
+            VALUES
+                ('broken', 1, 'broken', 'control', '{\"control\":100}', 'retired', 1,
+                 '2026-08-01 10:00:00.000000', '2026-08-01 10:00:00.000000')
+        ")->execute();
+        $validate = new CommandTester(new ValidateExperimentsCommand($this->repository));
+
+        Assert::same($validate->execute([], ['decorated' => true]), Command::FAILURE);
+        Assert::string($validate->getDisplay())
+            ->contains($this->styledError('Invalid experiment state "retired"'));
+        Assert::string($validate->getDisplay())->notContains('Valid experiments');
     }
 }

@@ -319,4 +319,63 @@ final class CachedExperimentProviderTest
             value: $value,
         );
     }
+
+    public function derivesTheCacheKeyFromTheInnerNamespaceProvider(): void
+    {
+        $cache = new MemorySimpleCache();
+        $provider = new CachedExperimentProvider(
+            inner: new NamespacedExperimentProvider('db.custom'),
+            cache: $cache,
+        );
+
+        $provider->getExperiments();
+
+        Assert::same(
+            array_keys($cache->getValues()),
+            ['rasuvaeff.ab-testing.experiments.' . hash('sha256', 'db.custom')],
+        );
+    }
+
+    public function derivesTheCacheKeyFromTheInnerClassWithoutANamespaceProvider(): void
+    {
+        $cache = new MemorySimpleCache();
+        $provider = new CachedExperimentProvider(
+            inner: new FixedExperimentProvider(),
+            cache: $cache,
+        );
+
+        $provider->getExperiments();
+
+        Assert::same(
+            array_keys($cache->getValues()),
+            ['rasuvaeff.ab-testing.experiments.' . hash('sha256', FixedExperimentProvider::class)],
+        );
+    }
+
+    public function explicitNamespaceWinsOverTheInnerNamespaceProvider(): void
+    {
+        $cache = new MemorySimpleCache();
+        $provider = new CachedExperimentProvider(
+            inner: new NamespacedExperimentProvider('db.custom'),
+            cache: $cache,
+            namespace: 'explicit',
+        );
+
+        $provider->getExperiments();
+
+        Assert::same(
+            array_keys($cache->getValues()),
+            ['rasuvaeff.ab-testing.experiments.' . hash('sha256', 'explicit')],
+        );
+    }
+
+    public function invalidateClearsTheCachedRegistry(): void
+    {
+        $cache = new MemorySimpleCache();
+        $this->seedCache(cache: $cache, value: ['rt-exp' => $this->experiment('rt-exp')]);
+
+        $this->provider(inner: $this->inner([]), cache: $cache)->invalidate();
+
+        Assert::same($cache->getValues(), []);
+    }
 }

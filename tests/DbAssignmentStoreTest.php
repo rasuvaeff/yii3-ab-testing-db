@@ -188,4 +188,18 @@ final class DbAssignmentStoreTest
     {
         return (int) $this->db->createCommand('SELECT COUNT(*) FROM ab_assignments')->queryScalar();
     }
+
+    public function readsNothingForAConfigurationWhenNoRowIsStored(): void
+    {
+        set_error_handler(static function (int $severity, string $message, string $file, int $line): never {
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        });
+
+        try {
+            Assert::null($this->store->getForConfiguration('checkout', 'subject-1', 'db:1'));
+            Assert::null($this->store->getForConfiguration('checkout', 'subject-1', null));
+        } finally {
+            restore_error_handler();
+        }
+    }
 }
