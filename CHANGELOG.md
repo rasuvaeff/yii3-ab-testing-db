@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.2.3 — 2026-11-27
+
+- Fixed: `ab-testing:create` ignored `--run` passed as `1` or `'1'` (an `ArrayInput`, a `CommandTester`, a scheduler wrapping the command) and created a Draft; any truthy value now starts the experiment (#34).
+
 ## 3.2.2 — 2026-11-27
 
 - Docs: the agent skill drops the stale "migrations do not register by namespace" section: with `yiisoft/db-migration` ^2.1 `setSourceNamespaces()` works, as the README documents.
