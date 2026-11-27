@@ -33,7 +33,7 @@ final class ReweightExperimentCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         try {
-            $variants = json_decode((string) $input->getArgument('variants'), associative: true, flags: JSON_THROW_ON_ERROR);
+            $variants = json_decode($this->stringArgument($input, 'variants'), associative: true, flags: JSON_THROW_ON_ERROR);
 
             if (!\is_array($variants) || array_is_list($variants)) {
                 throw new \InvalidArgumentException('Variants must be a JSON object');
@@ -47,7 +47,7 @@ final class ReweightExperimentCommand extends Command
 
             /** @var array<string, int<0, max>> $variants */
             $record = $this->repository->reweight(
-                name: (string) $input->getArgument('name'),
+                name: $this->stringArgument($input, 'name'),
                 variants: $variants,
                 expectedRevision: (int) $input->getArgument('revision'),
             );
@@ -60,5 +60,14 @@ final class ReweightExperimentCommand extends Command
         $output->writeln(sprintf('Reweighted %s at revision %d', $record->experiment->name, $record->revision));
 
         return Command::SUCCESS;
+    }
+
+    private function stringArgument(InputInterface $input, string $name): string
+    {
+        // getArguments() rather than getArgument(): psalm infers the declared
+        // string type for the latter, while an ArrayInput can pass any scalar.
+        $value = $input->getArguments()[$name] ?? null;
+
+        return \is_scalar($value) ? (string) $value : '';
     }
 }

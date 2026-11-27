@@ -325,6 +325,44 @@ final class ConsoleCommandsTest
         return '';
     }
 
+    public function createReadsNonStringScalarInputAsAString(): void
+    {
+        $create = new CommandTester(new CreateExperimentCommand($this->repository));
+        Assert::same($create->execute([
+            'name' => 'checkout',
+            'variants' => '{"control":50,"green":50}',
+            'fallback' => 'control',
+            '--salt' => 42,
+        ]), Command::SUCCESS);
+        Assert::same($this->repository->get('checkout')->experiment->salt, '42');
+
+        $numeric = new CommandTester(new CreateExperimentCommand($this->repository));
+        Assert::same($numeric->execute([
+            'name' => 123,
+            'variants' => '{"control":50,"green":50}',
+            'fallback' => 'control',
+        ]), Command::FAILURE);
+        Assert::string($numeric->getDisplay())->contains('Invalid experiment name "123"');
+    }
+
+    #[DataProvider('lifecycleCommandProvider')]
+    public function lifecycleCommandsReadANonStringScalarNameAsAString(string $command, array $input): void
+    {
+        $tester = new CommandTester(new $command($this->repository));
+        Assert::same($tester->execute($input), Command::FAILURE);
+        Assert::string($tester->getDisplay())->contains('Experiment "123" does not exist');
+    }
+
+    public static function lifecycleCommandProvider(): iterable
+    {
+        yield 'enable' => [EnableExperimentCommand::class, ['name' => 123, 'revision' => '1']];
+        yield 'disable' => [DisableExperimentCommand::class, ['name' => 123, 'revision' => '1']];
+        yield 'reweight' => [
+            ReweightExperimentCommand::class,
+            ['name' => 123, 'variants' => '{"control":50}', 'revision' => '1'],
+        ];
+    }
+
     private function create(): void
     {
         $create = new CommandTester(new CreateExperimentCommand($this->repository));

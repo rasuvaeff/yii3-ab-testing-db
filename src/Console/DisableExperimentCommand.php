@@ -33,7 +33,7 @@ final class DisableExperimentCommand extends Command
     {
         try {
             $record = $this->repository->disable(
-                name: (string) $input->getArgument('name'),
+                name: $this->stringArgument($input, 'name'),
                 expectedRevision: (int) $input->getArgument('revision'),
             );
         } catch (\Throwable $e) {
@@ -45,5 +45,14 @@ final class DisableExperimentCommand extends Command
         $output->writeln(sprintf('Disabled %s at revision %d', $record->experiment->name, $record->revision));
 
         return Command::SUCCESS;
+    }
+
+    private function stringArgument(InputInterface $input, string $name): string
+    {
+        // getArguments() rather than getArgument(): psalm infers the declared
+        // string type for the latter, while an ArrayInput can pass any scalar.
+        $value = $input->getArguments()[$name] ?? null;
+
+        return \is_scalar($value) ? (string) $value : '';
     }
 }

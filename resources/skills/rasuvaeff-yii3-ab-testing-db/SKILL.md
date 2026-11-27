@@ -49,19 +49,19 @@ locking, and server-side sticky assignments. Namespace
    neither runs automatically — dropping analytics-relevant history is the
    operator's decision.
 
-## Migrations do not register by namespace
+## Migrations register by namespace
 
-The documented `MigrationService::setSourceNamespaces()` recipe **silently finds
-nothing** while the core package is installed, which is always: `yiisoft/db-migration`
-matches the PSR-4 map by string prefix and lands inside `yii3-ab-testing`.
-`migrate:up` then prints "up-to-date", exits 0 and creates no tables.
-
-Apply them through `Injector` instead:
+Requires `yiisoft/db-migration` ^2.1 (earlier versions matched the PSR-4 map by
+string prefix, landed inside `yii3-ab-testing` and silently found nothing):
 
 ```php
-foreach ([M260610000000CreateAbExperimentsTable::class, /* … */] as $class) {
-    $injector->make($class)->up($builder);
-}
+// config/common/di/migration.php
+MigrationService::class => [
+    'setSourceNamespaces()' => [[
+        'App\\Migration',
+        'Rasuvaeff\\Yii3AbTestingDb\\Migration',
+    ]],
+],
 ```
 
 The table name is a value object (`AbExperimentsTableName`,
