@@ -148,6 +148,44 @@ final class ConsoleCommandsTest
         Assert::true($started->experiment->enabled);
     }
 
+    #[DataProvider('truthyRunFlagProvider')]
+    public function createStartsTheExperimentForAnyTruthyRunFlag(mixed $flag): void
+    {
+        $create = new CommandTester(new CreateExperimentCommand($this->repository));
+        Assert::same($create->execute([
+            'name' => 'search',
+            'variants' => '{"control":50,"green":50}',
+            'fallback' => 'control',
+            '--run' => $flag,
+        ]), Command::SUCCESS);
+
+        $started = $this->repository->get('search');
+        Assert::same($started->state, ExperimentState::Running);
+        Assert::true($started->experiment->enabled);
+    }
+
+    public static function truthyRunFlagProvider(): iterable
+    {
+        yield 'true' => [true];
+        yield 'int 1 from ArrayInput' => [1];
+        yield 'string 1 from ArrayInput' => ['1'];
+    }
+
+    public function createKeepsADraftForAFalseRunFlag(): void
+    {
+        $create = new CommandTester(new CreateExperimentCommand($this->repository));
+        Assert::same($create->execute([
+            'name' => 'search',
+            'variants' => '{"control":50,"green":50}',
+            'fallback' => 'control',
+            '--run' => false,
+        ]), Command::SUCCESS);
+
+        $record = $this->repository->get('search');
+        Assert::same($record->state, ExperimentState::Draft);
+        Assert::false($record->experiment->enabled);
+    }
+
     public function createFallsBackToTheNameWhenNoSaltIsGiven(): void
     {
         $this->create();

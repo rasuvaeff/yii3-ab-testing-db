@@ -42,7 +42,7 @@ final class CreateExperimentCommand extends Command
         try {
             $name = $this->stringArgument($input, 'name');
             $variants = $this->variants($this->stringArgument($input, 'variants'));
-            $run = $input->getOption('run') === true;
+            $run = (bool) ($input->getOptions()['run'] ?? false);
             $record = $this->repository->create(
                 experiment: new Experiment(
                     name: $name,
