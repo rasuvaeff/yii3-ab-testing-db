@@ -40,15 +40,15 @@ final class CreateExperimentCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         try {
-            $name = (string) $input->getArgument('name');
-            $variants = $this->variants((string) $input->getArgument('variants'));
+            $name = $this->stringArgument($input, 'name');
+            $variants = $this->variants($this->stringArgument($input, 'variants'));
             $run = $input->getOption('run') === true;
             $record = $this->repository->create(
                 experiment: new Experiment(
                     name: $name,
                     enabled: $run,
-                    salt: (string) ($input->getOption('salt') ?? $name),
-                    fallbackVariant: (string) $input->getArgument('fallback'),
+                    salt: $this->stringOption($input, 'salt') ?? $name,
+                    fallbackVariant: $this->stringArgument($input, 'fallback'),
                     variants: $variants,
                 ),
                 state: $run ? ExperimentState::Running : ExperimentState::Draft,
@@ -84,5 +84,21 @@ final class CreateExperimentCommand extends Command
         }
 
         return $variants;
+    }
+
+    private function stringArgument(InputInterface $input, string $name): string
+    {
+        // getArguments() rather than getArgument(): psalm infers the declared
+        // string type for the latter, while an ArrayInput can pass any scalar.
+        $value = $input->getArguments()[$name] ?? null;
+
+        return \is_scalar($value) ? (string) $value : '';
+    }
+
+    private function stringOption(InputInterface $input, string $name): ?string
+    {
+        $value = $input->getOptions()[$name] ?? null;
+
+        return \is_scalar($value) ? (string) $value : null;
     }
 }
